@@ -305,3 +305,6 @@ fabric.properties
 
 # Generated certificate backup files
 **/certificates/*.pem.backup
+
+# Local stack runtime data volumes
+/data

@@ -1,0 +1,26 @@
+# Local-only override: the published ghcr.io operator-ui image is not publicly
+# pullable, so build the UI from local source instead (same Dockerfile that
+# docker-compose.local.yml uses). Not for commit upstream.
+services:
+  # Build the server from local source too: the published :latest image lags the
+  # repo (missing migrations >= 20260427, e.g. ocppConnectionName rename) and the
+  # locally-built operator UI queries the newer schema.
+  citrine:
+    image: citrineos-server:local
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: ./apps/server/deploy.Dockerfile
+
+  citrine-ui:
+    image: citrineos-operator-ui:local
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: apps/operator-ui/Dockerfile
+    environment:
+      # Generic auth provider credentials (local dev only)
+      NEXT_PUBLIC_ADMIN_EMAIL: admin@citrineos.com
+      ADMIN_PASSWORD: "CitrineOS!"
+      NEXTAUTH_SECRET: "local-dev-secret-2b1fc16ee76818bf"
+      NEXTAUTH_URL: http://localhost:3000
