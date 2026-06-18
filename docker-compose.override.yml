@@ -24,3 +24,7 @@ services:
       ADMIN_PASSWORD: "CitrineOS!"
       NEXTAUTH_SECRET: "local-dev-secret-2b1fc16ee76818bf"
       NEXTAUTH_URL: http://localhost:3000
+      # Google Maps: replace with your real keys from Google Cloud Console.
+      # GOOGLE_MAPS_API_KEY = map rendering; GOOGLE_MAPS_ADDRESS_API_KEY = geocoding/address lookup.
+      GOOGLE_MAPS_API_KEY: "AIzaSyDNIxJptezylHwTwvwJkxyoY0pD_z3DMEw"
+      GOOGLE_MAPS_ADDRESS_API_KEY: "AIzaSyDNIxJptezylHwTwvwJkxyoY0pD_z3DMEw"
