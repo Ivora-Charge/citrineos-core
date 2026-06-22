@@ -10,7 +10,7 @@ services:
     pull_policy: never
     build:
       context: .
-      dockerfile: ./apps/server/deploy.Dockerfile
+      dockerfile: ./apps/Server/deploy.Dockerfile
 
   citrine-ui:
     image: citrineos-operator-ui:local
