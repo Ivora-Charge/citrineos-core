@@ -25,6 +25,10 @@
 
 # Specific directories to ignore
 **/Server/data
+# Docker-compose bind-mount volumes at the repo root (postgres/minio/rabbitmq).
+# These are root-owned and unreadable by the build user, which otherwise fails
+# the context tar with "can't stat .../data/postgresql/pgdata".
+/data
 
 # VCS and CI/test artifacts (not needed in any image)
 .git

@@ -13,6 +13,19 @@ WORKDIR /app
 COPY . .
 
 RUN pnpm install --frozen-lockfile
+
+# NEXT_PUBLIC_* values are inlined into the client bundle by `next build`, so
+# the public-facing backend URLs must be present *before* the build runs —
+# setting them only at container runtime is too late for browser code.
+# Defaults are empty, so omitting these args reproduces the previous behavior
+# (config.ts falls back to its localhost defaults).
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_WS_URL
+ARG NEXT_PUBLIC_CITRINE_CORE_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}
+ENV NEXT_PUBLIC_CITRINE_CORE_URL=${NEXT_PUBLIC_CITRINE_CORE_URL}
+
 RUN pnpm --filter "@citrineos/operator-ui..." build
 
 FROM node:24.16.0-alpine AS runner

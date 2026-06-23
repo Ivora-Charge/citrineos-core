@@ -18,12 +18,24 @@ services:
     build:
       context: .
       dockerfile: apps/operator-ui/Dockerfile
+      args:
+        # Baked into the client bundle at build time (see Dockerfile). The
+        # browser hits these same-origin paths, which nginx proxies to Hasura
+        # (:8090) and core (:8080). Same origin => no CORS.
+        NEXT_PUBLIC_API_URL: https://csms-test.ivoracharge.com/hasura/v1/graphql
+        NEXT_PUBLIC_WS_URL: wss://csms-test.ivoracharge.com/hasura/v1/graphql
+        NEXT_PUBLIC_CITRINE_CORE_URL: https://csms-test.ivoracharge.com/core-api
     environment:
       # Generic auth provider credentials (local dev only)
       NEXT_PUBLIC_ADMIN_EMAIL: admin@citrineos.com
       ADMIN_PASSWORD: "CitrineOS!"
       NEXTAUTH_SECRET: "local-dev-secret-2b1fc16ee76818bf"
-      NEXTAUTH_URL: http://localhost:3000
+      # Must be the public URL or NextAuth callbacks/cookies break.
+      NEXTAUTH_URL: https://csms-test.ivoracharge.com
+      # Also provided at runtime for any server-side reads of the same config.
+      NEXT_PUBLIC_API_URL: https://csms-test.ivoracharge.com/hasura/v1/graphql
+      NEXT_PUBLIC_WS_URL: wss://csms-test.ivoracharge.com/hasura/v1/graphql
+      NEXT_PUBLIC_CITRINE_CORE_URL: https://csms-test.ivoracharge.com/core-api
       # Google Maps: replace with your real keys from Google Cloud Console.
       # GOOGLE_MAPS_API_KEY = map rendering; GOOGLE_MAPS_ADDRESS_API_KEY = geocoding/address lookup.
       GOOGLE_MAPS_API_KEY: "AIzaSyDNIxJptezylHwTwvwJkxyoY0pD_z3DMEw"
