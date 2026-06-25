@@ -111,6 +111,46 @@ export class Tenant extends Model<TenantAttributes, TenantCreationAttributes> im
     allowNull: true,
   })
   declare maxChargingStations: number | null;
+
+  /**
+   * Business / payment onboarding fields. Filled in by the operator-ui
+   * onboarding wizard; nullable because a tenant exists before onboarding.
+   * stripeAccountId holds a Stripe Connect account id ("acct_...") or the
+   * literal "platform" for dev (charges on the platform account).
+   */
+  @Column(DataType.STRING)
+  declare stripeAccountId?: string | null;
+
+  @Column(DataType.STRING)
+  declare businessName?: string | null;
+
+  @Column(DataType.STRING)
+  declare businessAddress?: string | null;
+
+  @Column(DataType.STRING)
+  declare businessPostalCode?: string | null;
+
+  @Column(DataType.STRING)
+  declare businessCity?: string | null;
+
+  @Column(DataType.STRING)
+  declare businessState?: string | null;
+
+  @Column(DataType.STRING)
+  declare businessCountry?: string | null;
+
+  @Column(DataType.STRING)
+  declare businessContactEmail?: string | null;
+
+  @Column(DataType.STRING)
+  declare businessContactPhone?: string | null;
+
+  @Column({
+    type: DataType.DATE,
+    allowNull: true,
+  })
+  declare paymentOnboardingCompletedAt?: Date | null;
+
   /**
    * Relationships
    */

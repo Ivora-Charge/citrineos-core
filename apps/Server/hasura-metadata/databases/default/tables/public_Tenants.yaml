@@ -364,3 +364,28 @@ select_permissions:
           _eq: x-hasura-tenant-id
       allow_aggregations: true
     comment: ""
+update_permissions:
+  - role: user
+    permission:
+      columns:
+        - name
+        - url
+        - countryCode
+        - partyId
+        - stripeAccountId
+        - businessName
+        - businessAddress
+        - businessPostalCode
+        - businessCity
+        - businessState
+        - businessCountry
+        - businessContactEmail
+        - businessContactPhone
+        - paymentOnboardingCompletedAt
+      filter:
+        id:
+          _eq: x-hasura-tenant-id
+      check:
+        id:
+          _eq: x-hasura-tenant-id
+    comment: ""

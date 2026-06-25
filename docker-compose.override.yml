@@ -25,7 +25,17 @@ services:
         NEXT_PUBLIC_API_URL: https://csms-test.ivoracharge.com/hasura/v1/graphql
         NEXT_PUBLIC_WS_URL: wss://csms-test.ivoracharge.com/hasura/v1/graphql
         NEXT_PUBLIC_CITRINE_CORE_URL: https://csms-test.ivoracharge.com/core-api
+        # Payment service base URL used (server-side) by the catalog sync action.
+        # 172.18.0.1 is the docker bridge gateway -> host:9010 (payment service),
+        # reachable from this container. NEXT_PUBLIC_* must be a build arg so Next
+        # inlines it. Public alt: https://payment-test.ivoracharge.com
+        NEXT_PUBLIC_PAYMENT_SERVICE_URL: http://172.18.0.1:9010
     environment:
+      # Server-only shared secret for /api/catalog/sync (read at runtime by the
+      # syncPaymentCatalog server action). Must match the payment service's
+      # PAYMENT_CATALOG_SYNC_SECRET. Never baked into the client bundle.
+      PAYMENT_CATALOG_SYNC_SECRET: "e2e-test-secret"
+      NEXT_PUBLIC_PAYMENT_SERVICE_URL: http://172.18.0.1:9010
       # Generic auth provider credentials (local dev only)
       NEXT_PUBLIC_ADMIN_EMAIL: admin@citrineos.com
       ADMIN_PASSWORD: "CitrineOS!"

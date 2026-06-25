@@ -7,6 +7,7 @@ import { Logo } from '@lib/client/components/title';
 import { cn } from '@lib/utils/cn';
 import {
   ArrowLeftRight,
+  Building2,
   ChevronLeft,
   ChevronRight,
   Clipboard,
@@ -34,6 +35,7 @@ export enum MenuSection {
   TRANSACTIONS = 'transactions',
   TARIFFS = 'tariffs',
   PARTNERS = 'partners',
+  SETTINGS = 'settings',
 }
 
 export interface MainMenuProps {
@@ -97,6 +99,11 @@ export const MainMenu = ({ activeSection }: MainMenuProps) => {
       key: `/${MenuSection.PARTNERS}`,
       label: translate('TenantPartners.TenantPartners'),
       icon: <Users className={sidebarIconSize} />,
+    },
+    {
+      key: `/${MenuSection.SETTINGS}/business`,
+      label: 'Business',
+      icon: <Building2 className={sidebarIconSize} />,
     },
   ];
 

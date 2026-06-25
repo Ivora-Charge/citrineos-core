@@ -52,4 +52,11 @@ export const resources = [
       canDelete: true,
     },
   },
+  {
+    // Tenant business/payment profile. Edited via the onboarding wizard and the
+    // /settings/business page; no list view (a user only sees their own tenant).
+    name: ResourceType.TENANTS,
+    edit: '/settings/business',
+    meta: { canDelete: false },
+  },
 ];

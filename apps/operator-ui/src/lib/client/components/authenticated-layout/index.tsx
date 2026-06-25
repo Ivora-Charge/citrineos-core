@@ -7,12 +7,17 @@ import React, { useEffect, useState } from 'react';
 import { MainMenu, MenuSection } from '@lib/client/components/main-menu/main.menu';
 import { ConnectionModal } from '@lib/client/components/modals/shared/connection-modal/connection.modal';
 import AppModal from '@lib/client/components/modals';
-import { useIsAuthenticated, useTranslate, useGetIdentity } from '@refinedev/core';
+import { useIsAuthenticated, useOne, useTranslate, useGetIdentity } from '@refinedev/core';
 import { usePathname, useRouter } from 'next/navigation';
 import type { KeycloakUserIdentity } from '@lib/providers/auth-provider/keycloak-auth-provider';
 import { Loader2 } from 'lucide-react';
 import { heading2Style } from '@lib/client/styles/page';
 import { HeaderBanner } from '@lib/client/components/ui/header-banner';
+import { ResourceType } from '@lib/utils/access.types';
+import { useTenantId } from '@lib/client/hooks/useTenantId';
+import { TENANT_GET_QUERY } from '@lib/queries/tenants';
+
+const ONBOARDING_PATH = '/onboarding';
 
 type AuthenticatedLayoutProps = {
   children: React.ReactNode;
@@ -32,6 +37,32 @@ export default function AuthenticatedLayout({
 
   const { data, isLoading } = useIsAuthenticated();
   const { data: identity } = useGetIdentity<KeycloakUserIdentity>();
+
+  // Onboarding gate: a tenant whose paymentOnboardingCompletedAt is unset is
+  // redirected to the onboarding wizard. The wizard route itself is exempt to
+  // avoid a redirect loop.
+  const tenantId = useTenantId();
+  const {
+    query: { data: tenantData, isLoading: tenantLoading },
+  } = useOne<any>({
+    resource: ResourceType.TENANTS,
+    id: tenantId,
+    meta: { gqlQuery: TENANT_GET_QUERY },
+    queryOptions: { enabled: data?.authenticated === true },
+  });
+  const onboardingComplete = !!tenantData?.data?.paymentOnboardingCompletedAt;
+
+  useEffect(() => {
+    if (
+      data?.authenticated &&
+      !tenantLoading &&
+      tenantData &&
+      !onboardingComplete &&
+      pathname !== ONBOARDING_PATH
+    ) {
+      router.replace(ONBOARDING_PATH);
+    }
+  }, [data, tenantLoading, tenantData, onboardingComplete, pathname, router]);
 
   // First login detection logic
   useEffect(() => {

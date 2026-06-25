@@ -363,6 +363,36 @@ There are two ways to authenticate to Hasura:
 1. If you have \*_uncommented_ the Docker environment variable `HASURA_GRAPHQL_ADMIN_SECRET` in `citrineos-core`: 2. Ensure your `.env.local` has the `HASURA_ADMIN_SECRET` uncommented out 3. Please note that it is not recommended to use a Hasura Admin Secret in production.
 2. If you have commented the Docker environment variable `HASURA_GRAPHQL_ADMIN_SECRET` in `citrineos-core`: 5. Ensure your `.env.local` has the `HASURA_ADMIN_SECRET` commented out, as the auth will be handled by your auth provider automatically.
 
+## Payments Onboarding
+
+The operator-ui includes a tenant onboarding wizard (`/onboarding`) and a
+business settings page (`/settings/business`) that capture the tenant's business
+details, Stripe Connect account, and default pricing, then push the
+`payment_*` catalog to the [`citrineos-payment`](../../../citrineos-payment)
+service so operators no longer run `seed.py` by hand.
+
+- The main nav is **gated** until onboarding completes: a tenant whose
+  `paymentOnboardingCompletedAt` is unset is redirected to `/onboarding`. That
+  column (and the business/Stripe columns) is added by the core migration
+  `20260624000000-add-tenant-business-payment-fields`.
+- On **Complete** (and via **Sync payments** on the settings page) the UI calls
+  the `syncPaymentCatalog` server action, which POSTs one entry per EVSE to the
+  payment service's `POST /api/catalog/sync`. The EVSE business key convention is
+  `{ocppConnectionName}-{evseId}`.
+
+Add to `.env.local` (the secret is read **server-side only** and must never be
+exposed to the browser):
+
+```bash
+# Base URL of the citrineos-payment service
+NEXT_PUBLIC_PAYMENT_SERVICE_URL="http://localhost:9010"
+# Must match PAYMENT_CATALOG_SYNC_SECRET in citrineos-payment/.env
+PAYMENT_CATALOG_SYNC_SECRET="changeme-dev-secret"
+```
+
+For local dev without Stripe Connect, enter `platform` as the Stripe account id
+to charge on the platform account.
+
 ## Related Documentation
 
 - **CitrineOS Core**
