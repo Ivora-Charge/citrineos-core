@@ -35,7 +35,6 @@ type TariffUpsertProps = {
 
 const TariffFormSchema = TariffSchema.pick({
   [TariffProps.currency]: true,
-  [TariffProps.tariffAltText]: true,
 }).extend({
   [TariffProps.pricePerKwh]: z.coerce.number().min(0),
   [TariffProps.pricePerMin]: z.coerce.number().min(0).nullable().optional(),
@@ -43,6 +42,11 @@ const TariffFormSchema = TariffSchema.pick({
   [TariffProps.authorizationAmount]: z.coerce.number().min(0).nullable().optional(),
   [TariffProps.paymentFee]: z.coerce.number().min(0).nullable().optional(),
   [TariffProps.taxRate]: z.coerce.number().min(0).nullable().optional(),
+  // tariffAltText is edited as a JSON string in the textarea (and parsed back to
+  // an object in handleOnFinish). Picking it straight from TariffSchema applied
+  // its z.record(...) shape to the raw string, so any value other than a real
+  // object failed validation -- making this optional field behave as required.
+  [TariffProps.tariffAltText]: z.string().optional(),
 });
 
 const defaultValues = {

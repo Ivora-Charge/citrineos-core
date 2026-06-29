@@ -26,6 +26,7 @@ import { TENANT_EDIT_MUTATION, TENANT_GET_QUERY } from '@lib/queries/tenants';
 import { CHARGING_STATIONS_LIST_QUERY } from '@lib/queries/charging.stations';
 import {
   buildCatalogSyncEntries,
+  normalizeConnectorTariff,
   syncPaymentCatalog,
   type StationEvseInput,
 } from '@lib/utils/payment-catalog.client';
@@ -191,15 +192,25 @@ export const OnboardingWizard = () => {
 
   const evses: StationEvseInput[] = useMemo(() => {
     const stations = stationsData?.data ?? [];
-    return stations.flatMap((s: any) =>
-      (s.evses ?? []).map((e: any) => ({
+    return stations.flatMap((s: any) => {
+      // Connector.evseId is the Evse table id; map each Evse to the Tariff on its
+      // connector so the sync uses the EVSE's configured tariff rather than the
+      // flat default pricing.
+      const tariffByEvseDbId = new Map<number, any>();
+      for (const c of s.connectors ?? []) {
+        if (c?.evseId != null && c.Tariff) {
+          tariffByEvseDbId.set(Number(c.evseId), c.Tariff);
+        }
+      }
+      return (s.evses ?? []).map((e: any) => ({
         ocppConnectionName: s.ocppConnectionName as string,
         // CitrineOS stores the OCPP evse number in evseTypeId; the evseId column
         // is often null. evseTypeId is what maps to payment ocpp_evse_id and the
         // seed convention "{station}-{evseTypeId}".
         evseId: Number(e.evseTypeId ?? e.evseId),
-      })),
-    ).filter((e: StationEvseInput) => Number.isFinite(e.evseId));
+        tariff: normalizeConnectorTariff(tariffByEvseDbId.get(Number(e.id))),
+      }));
+    }).filter((e: StationEvseInput) => Number.isFinite(e.evseId));
   }, [stationsData]);
 
   const next = async () => {

@@ -43,7 +43,57 @@ export interface StationEvseInput {
   ocppConnectionName: string;
   /** OCPP evseId reported by the station -> payment ocpp_evse_id */
   evseId: number;
+  /**
+   * Pricing from the Tariff assigned to this EVSE's connector, if any. Used in
+   * preference to the form's default pricing so each EVSE is synced with the
+   * tariff actually configured for it (a field left unset here falls back to the
+   * default tariff). Without this, every EVSE was synced with the flat default.
+   */
+  tariff?: Partial<PaymentTariffInput>;
 }
+
+/** A connector's Tariff as returned by the GraphQL API (decimal columns may be
+ * strings/null). */
+export interface ConnectorTariff {
+  currency?: string | null;
+  pricePerKwh?: number | string | null;
+  pricePerMin?: number | string | null;
+  pricePerSession?: number | string | null;
+  authorizationAmount?: number | string | null;
+  paymentFee?: number | string | null;
+  taxRate?: number | string | null;
+}
+
+/**
+ * Map a connector's GraphQL Tariff onto the payment tariff input shape. Null /
+ * undefined columns are dropped so the default tariff fills those gaps in
+ * buildCatalogSyncEntries.
+ */
+export const normalizeConnectorTariff = (
+  tariff: ConnectorTariff | null | undefined,
+): Partial<PaymentTariffInput> | undefined => {
+  if (!tariff) return undefined;
+  const num = (v: number | string | null | undefined): number | undefined => {
+    if (v === null || v === undefined || v === '') return undefined;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const out: Partial<PaymentTariffInput> = {};
+  if (tariff.currency) out.currency = tariff.currency;
+  const priceKwh = num(tariff.pricePerKwh);
+  if (priceKwh !== undefined) out.priceKwh = priceKwh;
+  const priceMinute = num(tariff.pricePerMin);
+  if (priceMinute !== undefined) out.priceMinute = priceMinute;
+  const priceSession = num(tariff.pricePerSession);
+  if (priceSession !== undefined) out.priceSession = priceSession;
+  const authorizationAmount = num(tariff.authorizationAmount);
+  if (authorizationAmount !== undefined) out.authorizationAmount = authorizationAmount;
+  const paymentFee = num(tariff.paymentFee);
+  if (paymentFee !== undefined) out.paymentFee = paymentFee;
+  const taxRate = num(tariff.taxRate);
+  if (taxRate !== undefined) out.taxRate = taxRate;
+  return out;
+};
 
 /**
  * EVSE business key convention shared with the payment service:
@@ -80,26 +130,32 @@ export const buildCatalogSyncEntries = (
   evses: StationEvseInput[],
   locationId: string,
 ): PaymentCatalogSyncEntry[] =>
-  evses.map((evse) => ({
-    operator_name: business.operatorName,
-    stripe_account_id: business.stripeAccountId,
-    location_id: locationId,
-    address: business.address,
-    postal_code: business.postalCode,
-    city: business.city,
-    state: business.state,
-    country: business.country,
-    station_id: evse.ocppConnectionName,
-    ocpp_evse_id: evse.evseId,
-    evse_id: buildEvseId(evse.ocppConnectionName, evse.evseId),
-    currency: tariff.currency,
-    tax_rate: tariff.taxRate,
-    authorization_amount: tariff.authorizationAmount,
-    price_kwh: tariff.priceKwh,
-    price_minute: tariff.priceMinute,
-    price_session: tariff.priceSession,
-    payment_fee: tariff.paymentFee,
-  }));
+  evses.map((evse) => {
+    // Per-EVSE tariff (from its connector) wins; the form's default tariff fills
+    // any field the assigned tariff leaves unset, and is the whole tariff when no
+    // tariff is assigned to the connector.
+    const effective = { ...tariff, ...evse.tariff };
+    return {
+      operator_name: business.operatorName,
+      stripe_account_id: business.stripeAccountId,
+      location_id: locationId,
+      address: business.address,
+      postal_code: business.postalCode,
+      city: business.city,
+      state: business.state,
+      country: business.country,
+      station_id: evse.ocppConnectionName,
+      ocpp_evse_id: evse.evseId,
+      evse_id: buildEvseId(evse.ocppConnectionName, evse.evseId),
+      currency: effective.currency,
+      tax_rate: effective.taxRate,
+      authorization_amount: effective.authorizationAmount,
+      price_kwh: effective.priceKwh,
+      price_minute: effective.priceMinute,
+      price_session: effective.priceSession,
+      payment_fee: effective.paymentFee,
+    };
+  });
 
 /** Invoke the server action that POSTs each entry to the payment service. */
 export const syncPaymentCatalog = (entries: PaymentCatalogSyncEntry[]) =>

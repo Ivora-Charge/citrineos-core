@@ -79,6 +79,8 @@ export const CHARGING_STATIONS_LIST_QUERY = gql`
       }
       connectors: Connectors {
         connectorId
+        evseId
+        tariffId
         status
         errorCode
         timestamp
@@ -87,6 +89,16 @@ export const CHARGING_STATIONS_LIST_QUERY = gql`
         vendorErrorCode
         createdAt
         updatedAt
+        Tariff {
+          id
+          currency
+          pricePerKwh
+          pricePerMin
+          pricePerSession
+          authorizationAmount
+          paymentFee
+          taxRate
+        }
       }
     }
     ChargingStations_aggregate(where: $where) {
