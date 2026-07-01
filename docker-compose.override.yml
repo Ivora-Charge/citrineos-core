@@ -12,6 +12,32 @@ services:
       context: .
       dockerfile: ./apps/Server/deploy.Dockerfile
 
+  # Identity provider for the operator UI (and, in Phase 2, Hasura JWT auth).
+  # Realm `ivora` is imported declaratively from ./keycloak/ivora-realm.json on
+  # first boot; run ./keycloak/bootstrap.sh once afterwards to allow the
+  # unmanaged tenant_id user attribute (Keycloak >=24 strips it otherwise).
+  # Public URL: https://csms-test.ivoracharge.com/auth (nginx proxies /auth/ ->
+  # 127.0.0.1:8180; see setup-scripts/setup_nginx_csms_ssl.sh in the parent
+  # repo). The fixed --hostname keeps token issuers on the public URL even for
+  # backchannel calls from the UI container (http://keycloak:8180/auth).
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command:
+      - start-dev
+      - --http-port=8180
+      - --http-relative-path=/auth
+      - --hostname=https://csms-test.ivoracharge.com/auth
+      - --proxy-headers=xforwarded
+      - --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: "Zrx3Oa2mtXLFd8sbFOYh"
+    ports:
+      - 8180:8180
+    volumes:
+      - keycloak-data:/opt/keycloak/data
+      - ./keycloak:/opt/keycloak/data/import:ro
+
   citrine-ui:
     image: citrineos-operator-ui:local
     pull_policy: never
@@ -30,13 +56,28 @@ services:
         # reachable from this container. NEXT_PUBLIC_* must be a build arg so Next
         # inlines it. Public alt: https://payment-test.ivoracharge.com
         NEXT_PUBLIC_PAYMENT_SERVICE_URL: http://172.18.0.1:9010
+        # Keycloak login (multi-tenant rollout Phase 1). Both are inlined into
+        # the client bundle: the auth provider choice and the public URL the
+        # browser is redirected to for login.
+        NEXT_PUBLIC_AUTH_PROVIDER: keycloak
+        NEXT_PUBLIC_KEYCLOAK_URL: https://csms-test.ivoracharge.com/auth
     environment:
       # Server-only shared secret for /api/catalog/sync (read at runtime by the
       # syncPaymentCatalog server action). Must match the payment service's
       # PAYMENT_CATALOG_SYNC_SECRET. Never baked into the client bundle.
       PAYMENT_CATALOG_SYNC_SECRET: "e2e-test-secret"
       NEXT_PUBLIC_PAYMENT_SERVICE_URL: http://172.18.0.1:9010
-      # Generic auth provider credentials (local dev only)
+      # Keycloak login (multi-tenant rollout Phase 1). The browser uses the
+      # public /auth URL; this container reaches Keycloak directly over the
+      # compose network for token/userinfo/jwks calls.
+      NEXT_PUBLIC_AUTH_PROVIDER: keycloak
+      NEXT_PUBLIC_KEYCLOAK_URL: https://csms-test.ivoracharge.com/auth
+      KEYCLOAK_SERVER_URL: http://keycloak:8180/auth
+      KEYCLOAK_REALM: ivora
+      KEYCLOAK_CLIENT_ID: citrineos-ui
+      KEYCLOAK_CLIENT_SECRET: "f21744f52399128c0358c4fe2f45dfb176494342adc1ed2e"
+      # Generic auth provider credentials (unused while AUTH_PROVIDER=keycloak;
+      # kept for quick local fallback)
       NEXT_PUBLIC_ADMIN_EMAIL: admin@citrineos.com
       ADMIN_PASSWORD: "CitrineOS!"
       NEXTAUTH_SECRET: "local-dev-secret-2b1fc16ee76818bf"
@@ -50,3 +91,6 @@ services:
       # GOOGLE_MAPS_API_KEY = map rendering; GOOGLE_MAPS_ADDRESS_API_KEY = geocoding/address lookup.
       GOOGLE_MAPS_API_KEY: "AIzaSyDNIxJptezylHwTwvwJkxyoY0pD_z3DMEw"
       GOOGLE_MAPS_ADDRESS_API_KEY: "AIzaSyDNIxJptezylHwTwvwJkxyoY0pD_z3DMEw"
+
+volumes:
+  keycloak-data:

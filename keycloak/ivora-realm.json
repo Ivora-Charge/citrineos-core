@@ -1,0 +1,124 @@
+{
+  "realm": "ivora",
+  "enabled": true,
+  "displayName": "Ivora Charge",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": true,
+  "rememberMe": true,
+  "sslRequired": "external",
+  "accessTokenLifespan": 600,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 43200,
+  "clients": [
+    {
+      "clientId": "citrineos-ui",
+      "name": "CitrineOS Operator UI",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "f21744f52399128c0358c4fe2f45dfb176494342adc1ed2e",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "https://csms-test.ivoracharge.com/*",
+        "http://localhost:3000/*"
+      ],
+      "webOrigins": [
+        "https://csms-test.ivoracharge.com",
+        "http://localhost:3000"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "https://csms-test.ivoracharge.com/*##http://localhost:3000/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "tenant_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "tenant_id",
+            "claim.name": "tenant_id",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "roles": {
+    "client": {
+      "citrineos-ui": [
+        {
+          "name": "admin",
+          "description": "Legacy full-access role consumed by the current UI access provider (KeycloakRole.ADMIN)"
+        },
+        {
+          "name": "user",
+          "description": "Legacy standard role consumed by the current UI access provider (KeycloakRole.USER)"
+        },
+        {
+          "name": "platform-admin",
+          "description": "Ivora staff: all tenants, tenant CRUD, user invites, charger claims/unclaims"
+        },
+        {
+          "name": "platform-support",
+          "description": "Ivora staff: view all tenants, OCPP commands, diagnostics; no billing or tenant CRUD"
+        },
+        {
+          "name": "tenant-admin",
+          "description": "Property manager: pricing/tariffs, business + Stripe settings, reports, claim chargers (own tenant only)"
+        },
+        {
+          "name": "tenant-viewer",
+          "description": "Read-only status, sessions and revenue for own tenant"
+        }
+      ]
+    }
+  },
+  "users": [
+    {
+      "username": "ivora-admin",
+      "email": "admin@ivoracharge.com",
+      "firstName": "Ivora",
+      "lastName": "Admin",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "DaDCrNamAnj2AL7j",
+          "temporary": false
+        }
+      ],
+      "clientRoles": {
+        "citrineos-ui": ["admin", "platform-admin"]
+      }
+    },
+    {
+      "username": "tenant1-admin",
+      "email": "manager@defaulttenant.test",
+      "firstName": "Tenant One",
+      "lastName": "Manager",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "tenant_id": ["1"]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "19aEkb0NZsQHp8hb",
+          "temporary": false
+        }
+      ],
+      "clientRoles": {
+        "citrineos-ui": ["admin", "tenant-admin"]
+      }
+    }
+  ]
+}
