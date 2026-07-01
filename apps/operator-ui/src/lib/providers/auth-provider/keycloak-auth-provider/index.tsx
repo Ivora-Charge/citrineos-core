@@ -12,8 +12,17 @@ import React, { useEffect } from 'react';
 import { parseJwt, getTokenClaim } from '@lib/utils/jwt';
 
 export enum KeycloakRole {
+  // Legacy roles (pre multi-tenant rollout). ADMIN doubles as Hasura's
+  // built-in all-access role, so it is assigned to platform staff only.
   ADMIN = 'admin',
   USER = 'user',
+  // Multi-tenant rollout roles (client roles on citrineos-ui; see
+  // keycloak/README.md). Tenant users carry ONLY tenant-* roles so they can
+  // never claim the Hasura admin role.
+  PLATFORM_ADMIN = 'platform-admin',
+  PLATFORM_SUPPORT = 'platform-support',
+  TENANT_ADMIN = 'tenant-admin',
+  TENANT_VIEWER = 'tenant-viewer',
 }
 
 /**
@@ -71,10 +80,21 @@ export const createKeycloakAuthProvider = (): AuthProvider & AuthenticationConte
     const roles = permissions.roles;
 
     if (roles && roles.length > 0) {
-      if (roles.includes(KeycloakRole.ADMIN)) {
+      // Map onto the two UI permission tiers the access provider knows today
+      // (Phase 3 refines this into per-role capability maps): admin-level
+      // roles get full UI access, viewer/support get the standard tier.
+      if (
+        roles.includes(KeycloakRole.ADMIN) ||
+        roles.includes(KeycloakRole.PLATFORM_ADMIN) ||
+        roles.includes(KeycloakRole.TENANT_ADMIN)
+      ) {
         return KeycloakRole.ADMIN;
       }
-      if (roles.includes(KeycloakRole.USER)) {
+      if (
+        roles.includes(KeycloakRole.USER) ||
+        roles.includes(KeycloakRole.PLATFORM_SUPPORT) ||
+        roles.includes(KeycloakRole.TENANT_VIEWER)
+      ) {
         return KeycloakRole.USER;
       }
     }
@@ -93,14 +113,24 @@ export const createKeycloakAuthProvider = (): AuthProvider & AuthenticationConte
     }
     const tokenParsed = parseJwt(token);
 
-    // Set Hasura role
+    // Set Hasura role. The role sent here must be in the token's
+    // x-hasura-allowed-roles (Hasura claims_map maps them from the
+    // citrineos-ui client roles), so pick the strongest role the user
+    // actually holds. Tenant users never hold ADMIN, so they can only ever
+    // select their tenant-scoped roles.
     const hasuraClaims = getTokenClaim(tokenParsed, HASURA_CLAIM);
     if (!hasuraClaims) {
       const permissions = await getPermissions();
-      const roles = permissions.roles;
+      const roles = permissions.roles ?? [];
 
-      if (roles && roles.length > 0 && roles.includes(KeycloakRole.ADMIN)) {
+      if (roles.includes(KeycloakRole.ADMIN) || roles.includes(KeycloakRole.PLATFORM_ADMIN)) {
         hasuraHeaders.set(HasuraHeader.X_HASURA_ROLE, HasuraRole.ADMIN);
+      } else if (roles.includes(KeycloakRole.TENANT_ADMIN)) {
+        hasuraHeaders.set(HasuraHeader.X_HASURA_ROLE, KeycloakRole.TENANT_ADMIN);
+      } else if (roles.includes(KeycloakRole.PLATFORM_SUPPORT)) {
+        hasuraHeaders.set(HasuraHeader.X_HASURA_ROLE, KeycloakRole.PLATFORM_SUPPORT);
+      } else if (roles.includes(KeycloakRole.TENANT_VIEWER)) {
+        hasuraHeaders.set(HasuraHeader.X_HASURA_ROLE, KeycloakRole.TENANT_VIEWER);
       } else {
         hasuraHeaders.set(HasuraHeader.X_HASURA_ROLE, HasuraRole.USER);
       }

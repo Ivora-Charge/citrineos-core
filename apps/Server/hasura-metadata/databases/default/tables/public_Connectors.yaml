@@ -5,65 +5,104 @@ table:
   name: Connectors
   schema: public
 object_relationships:
-  - name: ChargingStation
-    using:
-      foreign_key_constraint_on: stationId
-  - name: Evse
-    using:
-      foreign_key_constraint_on: evseId
-  - name: Tariff
-    using:
-      foreign_key_constraint_on: tariffId
-  - name: Tenant
-    using:
-      foreign_key_constraint_on: tenantId
+- name: ChargingStation
+  using:
+    foreign_key_constraint_on: stationId
+- name: Evse
+  using:
+    foreign_key_constraint_on: evseId
+- name: Tariff
+  using:
+    foreign_key_constraint_on: tariffId
+- name: Tenant
+  using:
+    foreign_key_constraint_on: tenantId
 array_relationships:
-  - name: StartTransactions
-    using:
-      foreign_key_constraint_on:
-        column: connectorDatabaseId
-        table:
-          name: StartTransactions
-          schema: public
-  - name: Transactions
-    using:
-      foreign_key_constraint_on:
-        column: connectorId
-        table:
-          name: Transactions
-          schema: public
+- name: StartTransactions
+  using:
+    foreign_key_constraint_on:
+      column: connectorDatabaseId
+      table:
+        name: StartTransactions
+        schema: public
+- name: Transactions
+  using:
+    foreign_key_constraint_on:
+      column: connectorId
+      table:
+        name: Transactions
+        schema: public
 insert_permissions:
-  - role: user
-    permission:
-      check:
-        tenantId:
-          _eq: x-hasura-tenant-id
-      columns: '*'
-    comment: ""
+- role: user
+  permission:
+    check:
+      tenantId:
+        _eq: x-hasura-tenant-id
+    columns: '*'
+  comment: ''
+- role: tenant-admin
+  permission:
+    check:
+      tenantId:
+        _eq: x-hasura-tenant-id
+    columns: '*'
 select_permissions:
-  - role: user
-    permission:
-      columns: '*'
-      filter:
-        tenantId:
-          _eq: x-hasura-tenant-id
-      allow_aggregations: true
-    comment: ""
+- role: user
+  permission:
+    columns: '*'
+    filter:
+      tenantId:
+        _eq: x-hasura-tenant-id
+    allow_aggregations: true
+  comment: ''
+- role: tenant-admin
+  permission:
+    columns: '*'
+    filter:
+      tenantId:
+        _eq: x-hasura-tenant-id
+    allow_aggregations: true
+- role: tenant-viewer
+  permission:
+    columns: '*'
+    filter:
+      tenantId:
+        _eq: x-hasura-tenant-id
+    allow_aggregations: true
+- role: platform-support
+  permission:
+    columns: '*'
+    filter: {}
+    allow_aggregations: true
 update_permissions:
-  - role: user
-    permission:
-      columns: '*'
-      filter:
-        tenantId:
-          _eq: x-hasura-tenant-id
-      check:
-        tenantId:
-          _eq: x-hasura-tenant-id
-    comment: ""
+- role: user
+  permission:
+    columns: '*'
+    filter:
+      tenantId:
+        _eq: x-hasura-tenant-id
+    check:
+      tenantId:
+        _eq: x-hasura-tenant-id
+  comment: ''
+- role: tenant-admin
+  permission:
+    columns: '*'
+    filter:
+      tenantId:
+        _eq: x-hasura-tenant-id
+    check:
+      tenantId:
+        _eq: x-hasura-tenant-id
 delete_permissions:
-  - role: user
-    permission:
-      filter:
-        tenantId:
-          _eq: x-hasura-tenant-id
-    comment: ""
+- role: user
+  permission:
+    filter:
+      tenantId:
+        _eq: x-hasura-tenant-id
+  comment: ''
+- role: tenant-admin
+  permission:
+    filter:
+      tenantId:
+        _eq: x-hasura-tenant-id

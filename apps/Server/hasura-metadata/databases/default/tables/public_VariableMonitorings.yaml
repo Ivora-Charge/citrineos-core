@@ -5,32 +5,51 @@ table:
   name: VariableMonitorings
   schema: public
 object_relationships:
-  - name: ChargingStation
-    using:
-      foreign_key_constraint_on: stationId
-  - name: Component
-    using:
-      foreign_key_constraint_on: componentId
-  - name: Tenant
-    using:
-      foreign_key_constraint_on: tenantId
-  - name: Variable
-    using:
-      foreign_key_constraint_on: variableId
+- name: ChargingStation
+  using:
+    foreign_key_constraint_on: stationId
+- name: Component
+  using:
+    foreign_key_constraint_on: componentId
+- name: Tenant
+  using:
+    foreign_key_constraint_on: tenantId
+- name: Variable
+  using:
+    foreign_key_constraint_on: variableId
 array_relationships:
-  - name: VariableMonitoringStatuses
-    using:
-      foreign_key_constraint_on:
-        column: variableMonitoringId
-        table:
-          name: VariableMonitoringStatuses
-          schema: public
+- name: VariableMonitoringStatuses
+  using:
+    foreign_key_constraint_on:
+      column: variableMonitoringId
+      table:
+        name: VariableMonitoringStatuses
+        schema: public
 select_permissions:
-  - role: user
-    permission:
-      columns: '*'
-      filter:
-        tenantId:
-          _eq: x-hasura-tenant-id
-      allow_aggregations: true
-    comment: ""
+- role: user
+  permission:
+    columns: '*'
+    filter:
+      tenantId:
+        _eq: x-hasura-tenant-id
+    allow_aggregations: true
+  comment: ''
+- role: tenant-admin
+  permission:
+    columns: '*'
+    filter:
+      tenantId:
+        _eq: x-hasura-tenant-id
+    allow_aggregations: true
+- role: tenant-viewer
+  permission:
+    columns: '*'
+    filter:
+      tenantId:
+        _eq: x-hasura-tenant-id
+    allow_aggregations: true
+- role: platform-support
+  permission:
+    columns: '*'
+    filter: {}
+    allow_aggregations: true

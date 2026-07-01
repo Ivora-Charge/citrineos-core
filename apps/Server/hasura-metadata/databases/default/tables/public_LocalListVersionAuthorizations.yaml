@@ -5,21 +5,40 @@ table:
   name: LocalListVersionAuthorizations
   schema: public
 object_relationships:
-  - name: LocalListAuthorization
-    using:
-      foreign_key_constraint_on: authorizationId
-  - name: LocalListVersion
-    using:
-      foreign_key_constraint_on: localListVersionId
-  - name: Tenant
-    using:
-      foreign_key_constraint_on: tenantId
+- name: LocalListAuthorization
+  using:
+    foreign_key_constraint_on: authorizationId
+- name: LocalListVersion
+  using:
+    foreign_key_constraint_on: localListVersionId
+- name: Tenant
+  using:
+    foreign_key_constraint_on: tenantId
 select_permissions:
-  - role: user
-    permission:
-      columns: '*'
-      filter:
-        tenantId:
-          _eq: x-hasura-tenant-id
-      allow_aggregations: true
-    comment: ""
+- role: user
+  permission:
+    columns: '*'
+    filter:
+      tenantId:
+        _eq: x-hasura-tenant-id
+    allow_aggregations: true
+  comment: ''
+- role: tenant-admin
+  permission:
+    columns: '*'
+    filter:
+      tenantId:
+        _eq: x-hasura-tenant-id
+    allow_aggregations: true
+- role: tenant-viewer
+  permission:
+    columns: '*'
+    filter:
+      tenantId:
+        _eq: x-hasura-tenant-id
+    allow_aggregations: true
+- role: platform-support
+  permission:
+    columns: '*'
+    filter: {}
+    allow_aggregations: true

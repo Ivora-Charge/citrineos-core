@@ -96,7 +96,7 @@
         }
       ],
       "clientRoles": {
-        "citrineos-ui": ["admin", "platform-admin"]
+        "citrineos-ui": ["admin", "platform-admin", "tenant-viewer"]
       }
     },
     {
@@ -117,7 +117,7 @@
         }
       ],
       "clientRoles": {
-        "citrineos-ui": ["admin", "tenant-admin"]
+        "citrineos-ui": ["tenant-admin", "tenant-viewer"]
       }
     }
   ]

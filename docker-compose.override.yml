@@ -12,6 +12,20 @@ services:
       context: .
       dockerfile: ./apps/Server/deploy.Dockerfile
 
+  # Hasura lockdown (multi-tenant rollout Phase 2): admin secret for server-side
+  # privileged access, JWT mode against the ivora Keycloak realm for everyone
+  # else. claims_map derives the Hasura session from the plain Keycloak token:
+  # allowed roles from the citrineos-ui client roles, tenant from the tenant_id
+  # user attribute. No unauthorized role => anonymous requests are rejected.
+  # ($$ = compose-escaped literal $ in the JSONPath expressions.)
+  # Row-level permissions live in apps/Server/hasura-metadata (re-applied from
+  # the mounted dir on every container start); derive them with
+  # hasura/apply-tenancy-permissions.py.
+  graphql-engine:
+    environment:
+      HASURA_GRAPHQL_ADMIN_SECRET: "11b7e5994bac687366949358fa4308624a3808a24321ef4d"
+      HASURA_GRAPHQL_JWT_SECRET: '{"jwk_url":"http://keycloak:8180/auth/realms/ivora/protocol/openid-connect/certs","issuer":"https://csms-test.ivoracharge.com/auth/realms/ivora","claims_map":{"x-hasura-allowed-roles":{"path":"$$.resource_access.citrineos-ui.roles"},"x-hasura-default-role":"tenant-viewer","x-hasura-user-id":{"path":"$$.sub"},"x-hasura-tenant-id":{"path":"$$.tenant_id","default":""}}}'
+
   # Identity provider for the operator UI (and, in Phase 2, Hasura JWT auth).
   # Realm `ivora` is imported declaratively from ./keycloak/ivora-realm.json on
   # first boot; run ./keycloak/bootstrap.sh once afterwards to allow the
@@ -76,6 +90,11 @@ services:
       KEYCLOAK_REALM: ivora
       KEYCLOAK_CLIENT_ID: citrineos-ui
       KEYCLOAK_CLIENT_SECRET: "f21744f52399128c0358c4fe2f45dfb176494342adc1ed2e"
+      # Server-side privileged Hasura access (syncTariffToPayment etc.). With
+      # AUTH_PROVIDER=keycloak this secret is never handed to the browser --
+      # getHasuraAdminSecretAction returns empty and the client authenticates
+      # with its own Bearer token + x-hasura-role instead.
+      HASURA_ADMIN_SECRET: "11b7e5994bac687366949358fa4308624a3808a24321ef4d"
       # Generic auth provider credentials (unused while AUTH_PROVIDER=keycloak;
       # kept for quick local fallback)
       NEXT_PUBLIC_ADMIN_EMAIL: admin@citrineos.com

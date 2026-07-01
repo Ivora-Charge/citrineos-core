@@ -5,30 +5,49 @@ table:
   name: ServerNetworkProfiles
   schema: public
 object_relationships:
-  - name: Tenant
-    using:
-      foreign_key_constraint_on: tenantId
+- name: Tenant
+  using:
+    foreign_key_constraint_on: tenantId
 array_relationships:
-  - name: ChargingStationNetworkProfiles
-    using:
-      foreign_key_constraint_on:
-        column: websocketServerConfigId
-        table:
-          name: ChargingStationNetworkProfiles
-          schema: public
-  - name: SetNetworkProfiles
-    using:
-      foreign_key_constraint_on:
-        column: websocketServerConfigId
-        table:
-          name: SetNetworkProfiles
-          schema: public
+- name: ChargingStationNetworkProfiles
+  using:
+    foreign_key_constraint_on:
+      column: websocketServerConfigId
+      table:
+        name: ChargingStationNetworkProfiles
+        schema: public
+- name: SetNetworkProfiles
+  using:
+    foreign_key_constraint_on:
+      column: websocketServerConfigId
+      table:
+        name: SetNetworkProfiles
+        schema: public
 select_permissions:
-  - role: user
-    permission:
-      columns: '*'
-      filter:
-        tenantId:
-          _eq: x-hasura-tenant-id
-      allow_aggregations: true
-    comment: ""
+- role: user
+  permission:
+    columns: '*'
+    filter:
+      tenantId:
+        _eq: x-hasura-tenant-id
+    allow_aggregations: true
+  comment: ''
+- role: tenant-admin
+  permission:
+    columns: '*'
+    filter:
+      tenantId:
+        _eq: x-hasura-tenant-id
+    allow_aggregations: true
+- role: tenant-viewer
+  permission:
+    columns: '*'
+    filter:
+      tenantId:
+        _eq: x-hasura-tenant-id
+    allow_aggregations: true
+- role: platform-support
+  permission:
+    columns: '*'
+    filter: {}
+    allow_aggregations: true

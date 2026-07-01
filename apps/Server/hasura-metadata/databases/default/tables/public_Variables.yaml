@@ -5,77 +5,116 @@ table:
   name: Variables
   schema: public
 object_relationships:
-  - name: Tenant
-    using:
-      foreign_key_constraint_on: tenantId
-  - name: VariableCharacteristic
-    using:
-      foreign_key_constraint_on:
-        column: variableId
-        table:
-          name: VariableCharacteristics
-          schema: public
+- name: Tenant
+  using:
+    foreign_key_constraint_on: tenantId
+- name: VariableCharacteristic
+  using:
+    foreign_key_constraint_on:
+      column: variableId
+      table:
+        name: VariableCharacteristics
+        schema: public
 array_relationships:
-  - name: ComponentVariables
-    using:
-      foreign_key_constraint_on:
-        column: variableId
-        table:
-          name: ComponentVariables
-          schema: public
-  - name: EventData
-    using:
-      foreign_key_constraint_on:
-        column: variableId
-        table:
-          name: EventData
-          schema: public
-  - name: VariableAttributes
-    using:
-      foreign_key_constraint_on:
-        column: variableId
-        table:
-          name: VariableAttributes
-          schema: public
-  - name: VariableMonitorings
-    using:
-      foreign_key_constraint_on:
-        column: variableId
-        table:
-          name: VariableMonitorings
-          schema: public
+- name: ComponentVariables
+  using:
+    foreign_key_constraint_on:
+      column: variableId
+      table:
+        name: ComponentVariables
+        schema: public
+- name: EventData
+  using:
+    foreign_key_constraint_on:
+      column: variableId
+      table:
+        name: EventData
+        schema: public
+- name: VariableAttributes
+  using:
+    foreign_key_constraint_on:
+      column: variableId
+      table:
+        name: VariableAttributes
+        schema: public
+- name: VariableMonitorings
+  using:
+    foreign_key_constraint_on:
+      column: variableId
+      table:
+        name: VariableMonitorings
+        schema: public
 insert_permissions:
-  - role: user
-    permission:
-      check:
-        tenantId:
-          _eq: x-hasura-tenant-id
-      columns: '*'
-    comment: ""
+- role: user
+  permission:
+    check:
+      tenantId:
+        _eq: x-hasura-tenant-id
+    columns: '*'
+  comment: ''
+- role: tenant-admin
+  permission:
+    check:
+      tenantId:
+        _eq: x-hasura-tenant-id
+    columns: '*'
 select_permissions:
-  - role: user
-    permission:
-      columns: '*'
-      filter:
-        tenantId:
-          _eq: x-hasura-tenant-id
-      allow_aggregations: true
-    comment: ""
+- role: user
+  permission:
+    columns: '*'
+    filter:
+      tenantId:
+        _eq: x-hasura-tenant-id
+    allow_aggregations: true
+  comment: ''
+- role: tenant-admin
+  permission:
+    columns: '*'
+    filter:
+      tenantId:
+        _eq: x-hasura-tenant-id
+    allow_aggregations: true
+- role: tenant-viewer
+  permission:
+    columns: '*'
+    filter:
+      tenantId:
+        _eq: x-hasura-tenant-id
+    allow_aggregations: true
+- role: platform-support
+  permission:
+    columns: '*'
+    filter: {}
+    allow_aggregations: true
 update_permissions:
-  - role: user
-    permission:
-      columns: '*'
-      filter:
-        tenantId:
-          _eq: x-hasura-tenant-id
-      check:
-        tenantId:
-          _eq: x-hasura-tenant-id
-    comment: ""
+- role: user
+  permission:
+    columns: '*'
+    filter:
+      tenantId:
+        _eq: x-hasura-tenant-id
+    check:
+      tenantId:
+        _eq: x-hasura-tenant-id
+  comment: ''
+- role: tenant-admin
+  permission:
+    columns: '*'
+    filter:
+      tenantId:
+        _eq: x-hasura-tenant-id
+    check:
+      tenantId:
+        _eq: x-hasura-tenant-id
 delete_permissions:
-  - role: user
-    permission:
-      filter:
-        tenantId:
-          _eq: x-hasura-tenant-id
-    comment: ""
+- role: user
+  permission:
+    filter:
+      tenantId:
+        _eq: x-hasura-tenant-id
+  comment: ''
+- role: tenant-admin
+  permission:
+    filter:
+      tenantId:
+        _eq: x-hasura-tenant-id
