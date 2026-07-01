@@ -32,6 +32,63 @@ export const TENANT_GET_QUERY = gql`
   }
 `;
 
+export const TENANTS_LIST_QUERY = gql`
+  query TenantsList(
+    $offset: Int!
+    $limit: Int!
+    $order_by: [Tenants_order_by!]
+    $where: Tenants_bool_exp
+  ) {
+    Tenants(offset: $offset, limit: $limit, order_by: $order_by, where: $where) {
+      id
+      name
+      businessName
+      businessCity
+      businessCountry
+      stripeAccountId
+      paymentOnboardingCompletedAt
+      createdAt
+      updatedAt
+    }
+    Tenants_aggregate(where: $where) {
+      aggregate {
+        count
+      }
+    }
+  }
+`;
+
+export const AUDIT_LOGS_LIST_QUERY = gql`
+  query AuditLogsList($offset: Int!, $limit: Int!, $order_by: [AuditLogs_order_by!]) {
+    AuditLogs(offset: $offset, limit: $limit, order_by: $order_by) {
+      id
+      actor
+      actorRoles
+      tenantId
+      action
+      target
+      detail
+      createdAt
+    }
+    AuditLogs_aggregate {
+      aggregate {
+        count
+      }
+    }
+  }
+`;
+
+export const TENANT_CREATE_MUTATION = gql`
+  mutation TenantCreate($object: Tenants_insert_input!) {
+    insert_Tenants_one(object: $object) {
+      id
+      name
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
 export const TENANT_EDIT_MUTATION = gql`
   mutation TenantEdit($id: Int!, $object: Tenants_set_input!) {
     update_Tenants_by_pk(pk_columns: { id: $id }, _set: $object) {

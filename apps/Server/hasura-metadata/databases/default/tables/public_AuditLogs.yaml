@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the CitrineOS Project
+#
+# SPDX-License-Identifier: Apache-2.0
+# Append-only audit trail written by operator-ui server actions via the admin
+# secret (multi-tenant rollout Phase 3). platform-support may read everything;
+# tenant admins may read their own tenant's entries. No insert/update/delete
+# for any JWT role -- writes go through the server-side admin secret only.
+table:
+  name: AuditLogs
+  schema: public
+select_permissions:
+  - role: platform-support
+    permission:
+      columns: '*'
+      filter: {}
+      allow_aggregations: true
+  - role: tenant-admin
+    permission:
+      columns: '*'
+      filter:
+        tenantId:
+          _eq: x-hasura-tenant-id
+      allow_aggregations: true

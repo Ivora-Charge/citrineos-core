@@ -95,6 +95,10 @@ services:
       # getHasuraAdminSecretAction returns empty and the client authenticates
       # with its own Bearer token + x-hasura-role instead.
       HASURA_ADMIN_SECRET: "11b7e5994bac687366949358fa4308624a3808a24321ef4d"
+      # Keycloak Admin API credentials (server-only), used by the tenant user
+      # invite/list server actions (Phase 3).
+      KEYCLOAK_ADMIN_USER: admin
+      KEYCLOAK_ADMIN_PASSWORD: "Zrx3Oa2mtXLFd8sbFOYh"
       # Generic auth provider credentials (unused while AUTH_PROVIDER=keycloak;
       # kept for quick local fallback)
       NEXT_PUBLIC_ADMIN_EMAIL: admin@citrineos.com

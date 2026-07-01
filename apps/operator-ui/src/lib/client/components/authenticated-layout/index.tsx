@@ -58,7 +58,11 @@ export default function AuthenticatedLayout({
       !tenantLoading &&
       tenantData &&
       !onboardingComplete &&
-      pathname !== ONBOARDING_PATH
+      pathname !== ONBOARDING_PATH &&
+      // Platform staff manage tenants (incl. freshly created, not-yet-onboarded
+      // ones they may be "acting as") from /tenants without being dragged into
+      // that tenant's onboarding wizard.
+      !pathname?.startsWith('/tenants')
     ) {
       router.replace(ONBOARDING_PATH);
     }

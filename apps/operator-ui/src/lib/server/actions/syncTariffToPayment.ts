@@ -15,6 +15,7 @@ import {
   type PaymentTariffInput,
   type StationEvseInput,
 } from '@lib/utils/payment-catalog.client';
+import { audit } from '@lib/server/audit';
 
 // Everything needed to sync one tariff: its pricing, the tenant business
 // profile (operator/location fields), and every station/EVSE whose connector is
@@ -165,6 +166,17 @@ export async function syncTariffToPaymentAction(
     if (!result.success) {
       throw new Error(result.error);
     }
+    await audit({
+      actor: session.user.email ?? session.user.name ?? 'unknown',
+      actorRoles: session.user.roles,
+      tenantId,
+      action: 'payment.sync-tariff',
+      target: `tariff ${tariffId}`,
+      detail: {
+        evses: entries.map((e) => e.evse_id),
+        failed: result.data.filter((r) => !r.ok).map((r) => r.evse_id),
+      },
+    });
     return result.data;
   });
 }

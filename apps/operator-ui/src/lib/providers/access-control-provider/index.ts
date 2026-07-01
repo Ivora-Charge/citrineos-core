@@ -43,6 +43,23 @@ const ROLE_PERMISSIONS = {
   },
 };
 
+/**
+ * Resources (or specific actions on them) reserved for Ivora platform staff.
+ * Tenant users never see these, regardless of their UI permission tier.
+ * Raw Keycloak roles are checked (not the collapsed admin/user tier), because
+ * the tier can't distinguish a tenant admin from a platform admin. The legacy
+ * 'admin' role also qualifies: it is only assigned to platform staff (and the
+ * generic dev login), never to tenant users -- see keycloak/README.md.
+ */
+const PLATFORM_ROLES = ['platform-admin', 'platform-support', 'admin'];
+const PLATFORM_ONLY: Partial<Record<string, ActionType[]>> = {
+  // Tenant management: list/create/show/delete are platform surface; EDIT is
+  // deliberately absent so tenant admins keep editing their own business
+  // profile (/settings/business) -- Hasura row permissions scope that to
+  // their own row.
+  Tenants: [ActionType.LIST, ActionType.CREATE, ActionType.SHOW, ActionType.DELETE],
+};
+
 export const createAccessProvider = <TPermissions = unknown>(
   config: AccessProviderConfig<TPermissions>,
 ): AccessControlProvider => {
@@ -63,6 +80,17 @@ export const createAccessProvider = <TPermissions = unknown>(
 
       if (!permissions) {
         return canResponse;
+      }
+
+      const platformOnlyActions = resource ? PLATFORM_ONLY[resource] : undefined;
+      if (platformOnlyActions?.includes(action as ActionType)) {
+        const rawRoles: string[] = (permissions as any)?.roles ?? [];
+        if (!rawRoles.some((r) => PLATFORM_ROLES.includes(r))) {
+          return {
+            can: false,
+            reason: `Resource '${resource}' (${action}) is restricted to platform staff`,
+          };
+        }
       }
 
       const userRole = await getUserRole(permissions);

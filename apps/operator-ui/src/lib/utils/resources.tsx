@@ -53,9 +53,14 @@ export const resources = [
     },
   },
   {
-    // Tenant business/payment profile. Edited via the onboarding wizard and the
-    // /settings/business page; no list view (a user only sees their own tenant).
+    // Tenants: list/create/show are the platform-staff management surface
+    // (gated in the access provider); EDIT stays at /settings/business where a
+    // tenant admin maintains their own business/payment profile (Hasura row
+    // permissions scope it to their own row).
     name: ResourceType.TENANTS,
+    list: '/tenants',
+    create: '/tenants/new',
+    show: '/tenants/:id',
     edit: '/settings/business',
     meta: { canDelete: false },
   },

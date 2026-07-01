@@ -25,7 +25,8 @@ import { sidebarIconSize } from '@lib/client/styles/icon';
 import { ThemeToggle } from '@lib/client/components/theme-toggle';
 import { ConnectionModal } from '@lib/client/components/modals/shared/connection-modal/connection.modal';
 import { LogoutButton } from '@lib/client/components/logout-button';
-import { useTranslate } from '@refinedev/core';
+import { useCan, useTranslate } from '@refinedev/core';
+import { ActionType, ResourceType } from '@lib/utils/access.types';
 
 export enum MenuSection {
   OVERVIEW = 'overview',
@@ -35,6 +36,7 @@ export enum MenuSection {
   TRANSACTIONS = 'transactions',
   TARIFFS = 'tariffs',
   PARTNERS = 'partners',
+  TENANTS = 'tenants',
   SETTINGS = 'settings',
 }
 
@@ -63,6 +65,13 @@ export const MainMenu = ({ activeSection }: MainMenuProps) => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Platform-staff-only entry: hidden for tenant users (see PLATFORM_ONLY in
+  // the access provider).
+  const { data: canListTenants } = useCan({
+    resource: ResourceType.TENANTS,
+    action: ActionType.LIST,
+  });
 
   const mainMenuItems: MenuItem[] = [
     {
@@ -100,6 +109,15 @@ export const MainMenu = ({ activeSection }: MainMenuProps) => {
       label: translate('TenantPartners.TenantPartners'),
       icon: <Users className={sidebarIconSize} />,
     },
+    ...(canListTenants?.can
+      ? [
+          {
+            key: `/${MenuSection.TENANTS}`,
+            label: 'Tenants',
+            icon: <Building2 className={sidebarIconSize} />,
+          },
+        ]
+      : []),
     {
       key: `/${MenuSection.SETTINGS}/business`,
       label: 'Business',
