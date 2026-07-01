@@ -28,6 +28,8 @@ import { ChevronLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Textarea } from '@lib/client/components/ui/textarea';
 import { useTenantId } from '@lib/client/hooks/useTenantId';
+import { toast } from 'sonner';
+import { syncTariffToPaymentAction } from '@lib/server/actions/syncTariffToPayment';
 
 type TariffUpsertProps = {
   params: { id?: string };
@@ -129,7 +131,26 @@ export const TariffUpsert = ({ params }: TariffUpsertProps) => {
     }
     newItem.updatedAt = now;
 
-    form.refineCore.onFinish?.(newItem);
+    await form.refineCore.onFinish?.(newItem);
+
+    // Push the new pricing to the payment service for every EVSE on this
+    // tariff, so edits take effect without a manual "Sync payments" in Business
+    // settings. A brand-new tariff has no connectors yet, so only edits sync.
+    if (id) {
+      const sync = await syncTariffToPaymentAction(Number(id));
+      if (!sync.success) {
+        toast.error(`Tariff saved, but payment sync failed: ${sync.error}`);
+      } else if (sync.data.length > 0) {
+        const failed = sync.data.filter((r) => !r.ok);
+        if (failed.length > 0) {
+          toast.error(
+            `Tariff saved, but ${failed.length}/${sync.data.length} EVSE(s) failed to sync payments.`,
+          );
+        } else {
+          toast.success(`Payment pricing synced for ${sync.data.length} EVSE(s).`);
+        }
+      }
+    }
   };
 
   return (

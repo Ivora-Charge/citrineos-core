@@ -42,6 +42,8 @@ import { evsesFormUpsertGrid } from '@lib/client/pages/charging-stations/detail/
 import { Combobox } from '@lib/client/components/combobox';
 import { useList } from '@refinedev/core';
 import { useTenantId } from '@lib/client/hooks/useTenantId';
+import { toast } from 'sonner';
+import { syncTariffToPaymentAction } from '@lib/server/actions/syncTariffToPayment';
 
 interface ConnectorUpsertProps {
   onSubmit: () => void;
@@ -144,7 +146,22 @@ export const ConnectorsUpsert: React.FC<ConnectorUpsertProps> = ({
     newItem.ocppConnectionName =
       (connector as any)?.ocppConnectionName ?? selectedChargingStation?.ocppConnectionName;
 
-    form.refineCore.onFinish(newItem).then(() => reset());
+    form.refineCore.onFinish(newItem).then(async () => {
+      reset();
+      // Assigning (or changing) a tariff on a connector should reach the
+      // payment service immediately, not wait for a manual "Sync payments".
+      const tariffId = Number(newItem.tariffId);
+      if (Number.isFinite(tariffId) && tariffId > 0) {
+        const sync = await syncTariffToPaymentAction(tariffId);
+        if (!sync.success) {
+          toast.error(`Connector saved, but payment sync failed: ${sync.error}`);
+        } else if (sync.data.some((r) => !r.ok)) {
+          toast.error('Connector saved, but some EVSE(s) failed to sync payments.');
+        } else if (sync.data.length > 0) {
+          toast.success(`Payment pricing synced for ${sync.data.length} EVSE(s).`);
+        }
+      }
+    });
   };
 
   return (
