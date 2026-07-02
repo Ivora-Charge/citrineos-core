@@ -1,0 +1,33 @@
+const { chromium } = require('playwright');
+const BASE = 'https://csms-test.ivoracharge.com';
+(async () => {
+  const browser = await chromium.launch();
+  const page = await (await browser.newContext()).newPage();
+  await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#username');
+  await page.fill('#username', 'ivora-admin');
+  await page.fill('#password', 'DaDCrNamAnj2AL7j');
+  await page.click('#kc-login');
+  await page.waitForURL(`${BASE}/**`);
+  await page.goto(`${BASE}/fleet`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('text=Offline chargers', { timeout: 20000 });
+  const txt = await page.locator('body').innerText();
+  const head = txt.match(/(\d+\/\d+) chargers online/);
+  console.log('summary:', head?.[1]);
+  console.log('offline section:', /Offline chargers \(\d+\)/.test(txt));
+  console.log('sessions section:', /Active charging sessions/.test(txt));
+  console.log('firmware section:', /Firmware spread/.test(txt));
+  await page.screenshot({ path: 'fleet.png', fullPage: true });
+  // tenant user must be rejected
+  const b2 = await (await browser.newContext()).newPage();
+  await b2.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
+  await b2.waitForSelector('#username');
+  await b2.fill('#username', 'tenant1-admin');
+  await b2.fill('#password', '19aEkb0NZsQHp8hb');
+  await b2.click('#kc-login');
+  await b2.waitForURL(`${BASE}/**`);
+  await b2.goto(`${BASE}/fleet`, { waitUntil: 'networkidle' });
+  const t2 = await b2.locator('body').innerText();
+  console.log('tenant user sees fleet data:', /chargers online/.test(t2), '| sees error:', /Platform staff only/.test(t2));
+  await browser.close();
+})();
