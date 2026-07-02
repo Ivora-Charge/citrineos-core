@@ -92,7 +92,7 @@ export async function syncTariffToPaymentAction(
     // a charger for them); the override is re-validated in
     // syncPaymentCatalogAction, but the Hasura reads here need it too.
     let tenantId = session.user.tenantId || config.tenantId;
-    if (options?.tenantIdOverride) {
+    if (options?.tenantIdOverride && options.tenantIdOverride !== tenantId) {
       const roles = session.user.roles ?? [];
       if (!roles.includes('platform-admin') && !roles.includes('admin')) {
         throw new Error('Only platform staff can sync on behalf of another tenant');

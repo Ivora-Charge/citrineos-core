@@ -479,6 +479,9 @@ export class CitrineOSServer {
         return tenant?.maxChargingStations ?? null;
       },
       this._connectionManager,
+      this._repositoryStore.locationRepository.resolveTenantIdByStationId.bind(
+        this._repositoryStore.locationRepository,
+      ),
     );
 
     routerSender.onCallTimeout = (ocppConnectionName, tenantId) =>

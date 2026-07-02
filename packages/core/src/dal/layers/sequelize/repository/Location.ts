@@ -109,6 +109,22 @@ export class SequelizeLocationRepository
     return station;
   }
 
+  /**
+   * Cross-tenant lookup of a station's current tenant by its OCPP identity.
+   * Used at websocket-upgrade time so a charger that was claimed/moved to
+   * another tenant (keeping its factory-provisioned central URL) connects
+   * under its actual owner instead of the endpoint's configured default --
+   * otherwise every message it sends is stamped with the wrong tenant and
+   * rejected by the OCPPMessages tenant guard.
+   */
+  async resolveTenantIdByStationId(ocppConnectionName: string): Promise<number | null> {
+    const station = await ChargingStation.findOne({
+      where: { ocppConnectionName },
+      attributes: ['tenantId'],
+    });
+    return station?.tenantId ?? null;
+  }
+
   async doesChargingStationExistByStationId(
     tenantId: number,
     ocppConnectionName: string,

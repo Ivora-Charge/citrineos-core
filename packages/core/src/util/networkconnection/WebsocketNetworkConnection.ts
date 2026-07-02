@@ -68,6 +68,7 @@ export class WebsocketNetworkConnection implements INetworkConnection {
     ocppConnectionName: string,
   ) => Promise<boolean>;
   private _getMaxChargingStationsForTenant?: (tenantId: number) => Promise<number | null>;
+  private _resolveTenantIdByStationId?: (ocppConnectionName: string) => Promise<number | null>;
 
   constructor(
     config: SystemConfig,
@@ -82,7 +83,9 @@ export class WebsocketNetworkConnection implements INetworkConnection {
     ) => Promise<boolean>,
     getMaxChargingStationsForTenant?: (tenantId: number) => Promise<number | null>,
     connectionManager?: IConnectionManager,
+    resolveTenantIdByStationId?: (ocppConnectionName: string) => Promise<number | null>,
   ) {
+    this._resolveTenantIdByStationId = resolveTenantIdByStationId;
     this._getMaxChargingStationsForTenant = getMaxChargingStationsForTenant;
     this._cache = cache;
     this._config = config;
@@ -304,9 +307,31 @@ export class WebsocketNetworkConnection implements INetworkConnection {
     try {
       // Resolve tenant at upgrade time (query param, path segment, header),
       // falling back to the server-configured tenant if none provided.
-      const resolvedTenantId = websocketServerConfig.dynamicTenantResolution
+      let resolvedTenantId = websocketServerConfig.dynamicTenantResolution
         ? await this._extractTenantIdFromRequest(req, websocketServerConfig)
         : websocketServerConfig.tenantId;
+
+      // Station-based tenant resolution: chargers keep one central URL for
+      // life, but their owning tenant changes when they are claimed/moved.
+      // A known station's actual tenant always wins over the endpoint's
+      // configured default; unknown stations keep the default so first-boot
+      // registration still works.
+      if (this._resolveTenantIdByStationId) {
+        try {
+          const segments = new URL(req.url ?? '', 'http://localhost').pathname
+            .split('/')
+            .filter(Boolean);
+          const identifier = segments[segments.length - 1];
+          if (identifier) {
+            const stationTenantId = await this._resolveTenantIdByStationId(identifier);
+            if (stationTenantId !== null && stationTenantId !== undefined) {
+              resolvedTenantId = stationTenantId;
+            }
+          }
+        } catch (err) {
+          this._logger.debug('Station-based tenant resolution failed', err);
+        }
+      }
 
       if (resolvedTenantId === undefined) {
         throw new UpgradeAuthenticationError(

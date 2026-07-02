@@ -227,6 +227,8 @@ export interface ILocalAuthListRepository extends CrudRepository<LocalListVersio
 
 export interface ILocationRepository extends CrudRepository<Location> {
   readLocationById: (tenantId: number, id: number) => Promise<Location | undefined>;
+  /** Cross-tenant: a station's current owning tenant, or null if unknown. */
+  resolveTenantIdByStationId: (ocppConnectionName: string) => Promise<number | null>;
   readChargingStationByStationId: (
     tenantId: number,
     ocppConnectionName: string,

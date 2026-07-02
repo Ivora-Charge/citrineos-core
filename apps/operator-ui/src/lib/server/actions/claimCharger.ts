@@ -30,6 +30,54 @@ const INVENTORY_TENANT_NAME = 'Ivora Inventory';
 const isPlatformAdmin = (roles: string[]) =>
   roles.includes('platform-admin') || roles.includes('admin');
 
+/** Drop the charger's live OCPP connection so it reconnects. CitrineOS
+ * resolves a station's tenant when the websocket is established, so after a
+ * tenant move the old connection keeps stamping events with the previous
+ * tenant -- the OCPPMessages trigger then rejects every event (and payment
+ * hears nothing) until the charger reconnects. Must be called with the tenant
+ * the connection is currently registered under (the OLD one). Best-effort:
+ * an offline charger has no connection to drop and reconnects correctly on
+ * its own. */
+async function dropStationConnection(stationName: string, oldTenantId: number): Promise<void> {
+  const base = config.citrineCoreUrl;
+  if (!base) return;
+  try {
+    const res = await fetch(
+      `${base.replace(/\/$/, '')}/data/ocpprouter/connection` +
+        `?ocppConnectionName=${encodeURIComponent(stationName)}&tenantId=${oldTenantId}`,
+      { method: 'DELETE', cache: 'no-store' },
+    );
+    if (!res.ok) {
+      console.error(`[claim] connection drop failed: HTTP ${res.status}`);
+    }
+  } catch (err) {
+    console.error('[claim] connection drop failed:', err);
+  }
+}
+
+/** Keep the payment service's EVSE rows pointing at the station's new tenant.
+ * Best-effort: the payment side heals on the next catalog sync anyway, but
+ * without this, revenue attribution and outbound CitrineOS calls use the old
+ * tenant until a tariff re-sync happens (which may be never for a freshly
+ * claimed charger). */
+async function reassignPaymentStation(stationName: string, tenantId: number): Promise<void> {
+  const baseUrl = config.paymentServiceUrl;
+  const secret = process.env.PAYMENT_CATALOG_SYNC_SECRET;
+  if (!baseUrl || !secret) return;
+  try {
+    const res = await fetch(
+      `${baseUrl.replace(/\/$/, '')}/api/catalog/reassign-station` +
+        `?station_id=${encodeURIComponent(stationName)}&tenant_id=${tenantId}`,
+      { method: 'POST', headers: { 'X-Catalog-Sync-Secret': secret }, cache: 'no-store' },
+    );
+    if (!res.ok) {
+      console.error(`[claim] payment reassign failed: HTTP ${res.status}`);
+    }
+  } catch (err) {
+    console.error('[claim] payment reassign failed:', err);
+  }
+}
+
 async function inventoryTenantId(): Promise<number> {
   const data = await hasuraAdmin<{ Tenants: Array<{ id: number }> }>(
     `query { Tenants(where: {name: {_eq: "${INVENTORY_TENANT_NAME}"}}) { id } }`,
@@ -144,6 +192,10 @@ export async function claimChargerAction(input: {
     }
 
     await hasuraAdmin(MOVE_STATION, { stationId: station.id, tenantId, locationId });
+    await reassignPaymentStation(station.ocppConnectionName, tenantId);
+    // The live connection is registered under the inventory tenant; drop it so
+    // the charger reconnects under its new owner.
+    await dropStationConnection(station.ocppConnectionName, invId);
 
     // Re-sync any tariffs already wired to this station's connectors so the
     // payment catalog rows move to the new tenant too (get_or_create in
@@ -194,6 +246,7 @@ export async function moveToInventoryAction(
          ChargingStations(where: {ocppConnectionName: {_eq: $name}}) {
            id
            ocppConnectionName
+           tenantId
            Transactions: Transactions_aggregate(where: {isActive: {_eq: true}}) {
              aggregate { count }
            }
@@ -211,6 +264,8 @@ export async function moveToInventoryAction(
 
     const invId = await inventoryTenantId();
     await hasuraAdmin(MOVE_STATION, { stationId: station.id, tenantId: invId, locationId: null });
+    await reassignPaymentStation(station.ocppConnectionName, invId);
+    await dropStationConnection(station.ocppConnectionName, station.tenantId);
 
     await audit({
       actor: session.user.email ?? session.user.name ?? 'unknown',

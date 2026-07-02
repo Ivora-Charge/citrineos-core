@@ -157,6 +157,11 @@ export const buildCatalogSyncEntries = (
     };
   });
 
-/** Invoke the server action that POSTs each entry to the payment service. */
-export const syncPaymentCatalog = (entries: PaymentCatalogSyncEntry[]) =>
-  syncPaymentCatalogAction(entries);
+/** Invoke the server action that POSTs each entry to the payment service.
+ * Pass the page's acting tenant id so platform staff working on behalf of a
+ * tenant stamp that tenant (the server validates the override by role). */
+export const syncPaymentCatalog = (entries: PaymentCatalogSyncEntry[], tenantId?: number) =>
+  syncPaymentCatalogAction(
+    entries,
+    tenantId != null ? { tenantIdOverride: String(tenantId) } : undefined,
+  );

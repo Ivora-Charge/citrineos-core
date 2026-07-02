@@ -71,7 +71,7 @@ export async function syncPaymentCatalogAction(
     // specific tenant, e.g. when claiming a charger for them; tenant users
     // can never override their own binding.
     let tenantId = session.user.tenantId || config.tenantId;
-    if (options?.tenantIdOverride) {
+    if (options?.tenantIdOverride && options.tenantIdOverride !== tenantId) {
       const roles = session.user.roles ?? [];
       if (!roles.includes('platform-admin') && !roles.includes('admin')) {
         throw new Error('Only platform staff can sync on behalf of another tenant');

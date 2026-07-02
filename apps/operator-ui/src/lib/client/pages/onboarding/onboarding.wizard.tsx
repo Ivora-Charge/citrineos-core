@@ -358,7 +358,7 @@ export const OnboardingWizard = () => {
           evses,
           `tenant-${tenantId}`,
         );
-        const result = await syncPaymentCatalog(entries);
+        const result = await syncPaymentCatalog(entries, tenantId);
         if (!result.success) {
           toast.error(`Payment sync failed: ${result.error}`);
           setSubmitting(false);

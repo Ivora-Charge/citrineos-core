@@ -137,7 +137,12 @@ export const TariffUpsert = ({ params }: TariffUpsertProps) => {
     // tariff, so edits take effect without a manual "Sync payments" in Business
     // settings. A brand-new tariff has no connectors yet, so only edits sync.
     if (id) {
-      const sync = await syncTariffToPaymentAction(Number(id));
+      // Pass the acting tenant explicitly: a platform admin working on behalf
+      // of a tenant must stamp that tenant into the payment catalog, not the
+      // default (server re-validates the override against the caller's role).
+      const sync = await syncTariffToPaymentAction(Number(id), {
+        tenantIdOverride: String(tenantId),
+      });
       if (!sync.success) {
         toast.error(`Tariff saved, but payment sync failed: ${sync.error}`);
       } else if (sync.data.length > 0) {

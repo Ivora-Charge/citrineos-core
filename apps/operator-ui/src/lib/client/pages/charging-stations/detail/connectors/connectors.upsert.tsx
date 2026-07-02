@@ -152,7 +152,9 @@ export const ConnectorsUpsert: React.FC<ConnectorUpsertProps> = ({
       // payment service immediately, not wait for a manual "Sync payments".
       const tariffId = Number(newItem.tariffId);
       if (Number.isFinite(tariffId) && tariffId > 0) {
-        const sync = await syncTariffToPaymentAction(tariffId);
+        const sync = await syncTariffToPaymentAction(tariffId, {
+          tenantIdOverride: String(tenantId),
+        });
         if (!sync.success) {
           toast.error(`Connector saved, but payment sync failed: ${sync.error}`);
         } else if (sync.data.some((r) => !r.ok)) {
