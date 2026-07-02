@@ -25,6 +25,13 @@ export const TENANT_GET_QUERY = gql`
       businessCountry
       businessContactEmail
       businessContactPhone
+      defaultCurrency
+      defaultPriceKwh
+      defaultPriceMinute
+      defaultPriceSession
+      defaultAuthorizationAmount
+      defaultTaxRate
+      defaultPaymentFee
       paymentOnboardingCompletedAt
       createdAt
       updatedAt
@@ -108,6 +115,13 @@ export const TENANT_EDIT_MUTATION = gql`
       businessCountry
       businessContactEmail
       businessContactPhone
+      defaultCurrency
+      defaultPriceKwh
+      defaultPriceMinute
+      defaultPriceSession
+      defaultAuthorizationAmount
+      defaultTaxRate
+      defaultPaymentFee
       paymentOnboardingCompletedAt
       createdAt
       updatedAt

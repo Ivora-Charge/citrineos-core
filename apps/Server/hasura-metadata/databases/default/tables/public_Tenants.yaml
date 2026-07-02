@@ -402,6 +402,13 @@ update_permissions:
     - businessContactPhone
     - paymentOnboardingCompletedAt
     - updatedAt
+    - defaultCurrency
+    - defaultPriceKwh
+    - defaultPriceMinute
+    - defaultPriceSession
+    - defaultAuthorizationAmount
+    - defaultTaxRate
+    - defaultPaymentFee
     filter:
       id:
         _eq: x-hasura-tenant-id
@@ -427,6 +434,13 @@ update_permissions:
     - businessContactPhone
     - paymentOnboardingCompletedAt
     - updatedAt
+    - defaultCurrency
+    - defaultPriceKwh
+    - defaultPriceMinute
+    - defaultPriceSession
+    - defaultAuthorizationAmount
+    - defaultTaxRate
+    - defaultPaymentFee
     filter:
       id:
         _eq: x-hasura-tenant-id

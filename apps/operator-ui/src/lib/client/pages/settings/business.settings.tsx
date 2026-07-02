@@ -93,6 +93,8 @@ const mask = (id: string | undefined): string => {
 
 const mapTenant = (record: Record<string, unknown> | undefined): BusinessForm => {
   const str = (k: string) => (record?.[k] == null ? '' : String(record[k]));
+  const num = (k: string, fallback: number) =>
+    record?.[k] == null || record[k] === '' ? fallback : Number(record[k]);
   return {
     ...defaults,
     businessName: str('businessName') || str('name'),
@@ -104,6 +106,15 @@ const mapTenant = (record: Record<string, unknown> | undefined): BusinessForm =>
     businessContactEmail: str('businessContactEmail'),
     businessContactPhone: str('businessContactPhone'),
     stripeAccountId: str('stripeAccountId'),
+    // Default pricing persisted on the tenant row by the onboarding wizard
+    // (Phase 6); hardcoded defaults only seed tenants that never onboarded.
+    currency: str('defaultCurrency') || defaults.currency,
+    priceKwh: num('defaultPriceKwh', defaults.priceKwh),
+    priceMinute: num('defaultPriceMinute', defaults.priceMinute),
+    priceSession: num('defaultPriceSession', defaults.priceSession),
+    authorizationAmount: num('defaultAuthorizationAmount', defaults.authorizationAmount),
+    taxRate: num('defaultTaxRate', defaults.taxRate),
+    paymentFee: num('defaultPaymentFee', defaults.paymentFee),
   };
 };
 
@@ -200,6 +211,13 @@ export const BusinessSettings = () => {
       businessContactEmail: values.businessContactEmail || null,
       businessContactPhone: values.businessContactPhone || null,
       stripeAccountId: values.stripeAccountId,
+      defaultCurrency: values.currency,
+      defaultPriceKwh: values.priceKwh,
+      defaultPriceMinute: values.priceMinute,
+      defaultPriceSession: values.priceSession,
+      defaultAuthorizationAmount: values.authorizationAmount,
+      defaultTaxRate: values.taxRate,
+      defaultPaymentFee: values.paymentFee,
       updatedAt: new Date().toISOString(),
     } as any);
     toast.success('Business settings saved.');
