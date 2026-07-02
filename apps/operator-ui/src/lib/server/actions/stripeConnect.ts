@@ -1,0 +1,97 @@
+// SPDX-FileCopyrightText: 2025 Contributors to the CitrineOS Project
+//
+// SPDX-License-Identifier: Apache-2.0
+'use server';
+
+import { authedAction, type ActionResult } from '@lib/utils/action-guard';
+import config from '@lib/utils/config';
+import { audit } from '@lib/server/audit';
+
+// Stripe Connect onboarding (multi-tenant rollout Phase 5). The Stripe
+// platform key lives in the payment service; these actions proxy to its
+// service-to-service /api/connect endpoints with the shared secret and
+// enforce that a tenant user can only onboard their own tenant.
+
+export interface ConnectStatus {
+  stripe_account_id?: string | null;
+  charges_enabled: boolean;
+  details_submitted: boolean;
+}
+
+const isPlatformAdmin = (roles: string[]) =>
+  roles.includes('platform-admin') || roles.includes('admin');
+
+async function paymentApi(path: string, init?: RequestInit) {
+  const baseUrl = config.paymentServiceUrl;
+  const secret = process.env.PAYMENT_CATALOG_SYNC_SECRET;
+  if (!baseUrl) throw new Error('NEXT_PUBLIC_PAYMENT_SERVICE_URL is not configured');
+  if (!secret) throw new Error('PAYMENT_CATALOG_SYNC_SECRET is not configured');
+  const res = await fetch(`${baseUrl.replace(/\/$/, '')}/api/connect${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Catalog-Sync-Secret': secret,
+      ...init?.headers,
+    },
+    cache: 'no-store',
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`Payment service: HTTP ${res.status} ${detail.slice(0, 200)}`);
+  }
+  return res.json();
+}
+
+function resolveTenant(session: any, requested?: number): number {
+  const roles: string[] = session.user.roles ?? [];
+  const own = Number(session.user.tenantId);
+  if (isPlatformAdmin(roles)) {
+    return requested ?? own ?? Number(config.tenantId);
+  }
+  if (!roles.includes('tenant-admin')) {
+    throw new Error('Only tenant or platform admins can manage Stripe onboarding');
+  }
+  if (!own) throw new Error('Session has no tenant');
+  if (requested && requested !== own) {
+    throw new Error('Tenant admins can only onboard their own tenant');
+  }
+  return own;
+}
+
+/** Create (or refresh) the hosted Stripe onboarding link for a tenant. The
+ * caller redirects the browser to the returned URL; Stripe returns to
+ * /settings/business afterwards. */
+export async function createStripeOnboardingLinkAction(
+  tenantId?: number,
+): Promise<ActionResult<{ url: string; stripe_account_id: string }>> {
+  return authedAction(async (session) => {
+    const tid = resolveTenant(session, tenantId);
+    const base = process.env.NEXTAUTH_URL || 'http://localhost:3000';
+    const result = await paymentApi('/onboarding-link', {
+      method: 'POST',
+      body: JSON.stringify({
+        tenant_id: tid,
+        return_url: `${base}/settings/business?stripe=return`,
+        refresh_url: `${base}/settings/business?stripe=refresh`,
+      }),
+    });
+    await audit({
+      actor: session.user.email ?? session.user.name ?? 'unknown',
+      actorRoles: session.user.roles,
+      tenantId: tid,
+      action: 'stripe.onboarding-link',
+      target: result.stripe_account_id,
+    });
+    return result;
+  });
+}
+
+/** Live readiness of the tenant's Stripe account. */
+export async function getStripeConnectStatusAction(
+  tenantId?: number,
+): Promise<ActionResult<ConnectStatus>> {
+  return authedAction(async (session) => {
+    const tid = resolveTenant(session, tenantId);
+    return paymentApi(`/status?tenant_id=${tid}`, { method: 'GET' });
+  });
+}

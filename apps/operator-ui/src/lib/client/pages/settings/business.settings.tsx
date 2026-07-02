@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { FormProvider } from 'react-hook-form';
@@ -30,6 +30,11 @@ import {
   syncPaymentCatalog,
   type StationEvseInput,
 } from '@lib/utils/payment-catalog.client';
+import {
+  createStripeOnboardingLinkAction,
+  getStripeConnectStatusAction,
+  type ConnectStatus,
+} from '@lib/server/actions/stripeConnect';
 
 const stripeAccountIdSchema = z
   .string()
@@ -105,6 +110,30 @@ const mapTenant = (record: Record<string, unknown> | undefined): BusinessForm =>
 export const BusinessSettings = () => {
   const tenantId = useTenantId();
   const [syncing, setSyncing] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [connectStatus, setConnectStatus] = useState<ConnectStatus | null>(null);
+
+  // Live Stripe readiness (Phase 5): queried through the payment service, so
+  // it reflects reality without waiting for webhooks.
+  useEffect(() => {
+    void getStripeConnectStatusAction(tenantId).then((res) => {
+      if (res.success) setConnectStatus(res.data);
+    });
+  }, [tenantId]);
+
+  const startStripeOnboarding = async () => {
+    setConnecting(true);
+    try {
+      const res = await createStripeOnboardingLinkAction(tenantId);
+      if (!res.success) {
+        toast.error(`Stripe onboarding failed: ${res.error}`);
+        return;
+      }
+      window.location.href = res.data.url;
+    } finally {
+      setConnecting(false);
+    }
+  };
 
   const form = useForm({
     refineCoreProps: {
@@ -270,10 +299,30 @@ export const BusinessSettings = () => {
 
               <section>
                 <h3 className={heading3Style}>Payment</h3>
-                <div className="max-w-xl">
+                <div className="max-w-xl flex flex-col gap-3">
+                  <div className="flex items-center gap-3">
+                    <Button type="button" onClick={startStripeOnboarding} disabled={connecting}>
+                      {connecting ? <Loader2 className="size-4 animate-spin" /> : null}
+                      {connectStatus?.stripe_account_id?.startsWith('acct_')
+                        ? 'Continue Stripe onboarding'
+                        : 'Connect with Stripe'}
+                    </Button>
+                    {connectStatus && (
+                      <span className="text-sm text-muted-foreground">
+                        {connectStatus.charges_enabled
+                          ? '✓ Stripe account active — payments enabled'
+                          : connectStatus.details_submitted
+                            ? 'Details submitted — Stripe is reviewing'
+                            : connectStatus.stripe_account_id?.startsWith('acct_')
+                              ? 'Onboarding not finished'
+                              : 'No Stripe account connected yet'}
+                      </span>
+                    )}
+                  </div>
+                  {/* Manual entry stays as a platform/dev escape hatch. */}
                   <FormField
                     control={form.control}
-                    label="Stripe Connect account ID"
+                    label="Stripe Connect account ID (manual override)"
                     name="stripeAccountId"
                     required
                   >
