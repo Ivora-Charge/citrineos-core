@@ -15,6 +15,7 @@ const messageFilenames = [
   'tariffs',
   'transactions',
   'tenantPartners',
+  'tenants',
 ];
 
 export default getRequestConfig(async () => {

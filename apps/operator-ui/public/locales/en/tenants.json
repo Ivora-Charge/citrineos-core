@@ -1,0 +1,7 @@
+{
+  "Tenants": {
+    "Tenants": "Tenants",
+    "tenant": "Tenant",
+    "noDataFound": "No tenant found with id {id}."
+  }
+}

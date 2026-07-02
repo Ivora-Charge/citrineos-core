@@ -33,9 +33,11 @@ export const TENANT_GET_QUERY = gql`
 `;
 
 export const TENANTS_LIST_QUERY = gql`
+  # offset/limit are nullable with defaults: the tenants page lists with
+  # pagination mode 'off', so refine sends no pagination variables at all.
   query TenantsList(
-    $offset: Int!
-    $limit: Int!
+    $offset: Int = 0
+    $limit: Int = 500
     $order_by: [Tenants_order_by!]
     $where: Tenants_bool_exp
   ) {

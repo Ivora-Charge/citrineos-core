@@ -401,6 +401,7 @@ update_permissions:
     - businessContactEmail
     - businessContactPhone
     - paymentOnboardingCompletedAt
+    - updatedAt
     filter:
       id:
         _eq: x-hasura-tenant-id
@@ -425,6 +426,7 @@ update_permissions:
     - businessContactEmail
     - businessContactPhone
     - paymentOnboardingCompletedAt
+    - updatedAt
     filter:
       id:
         _eq: x-hasura-tenant-id
