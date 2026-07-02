@@ -85,9 +85,20 @@ interface TariffPaymentSyncData {
  */
 export async function syncTariffToPaymentAction(
   tariffId: number,
+  options?: { tenantIdOverride?: string },
 ): Promise<ActionResult<PaymentCatalogSyncResult[]>> {
   return authedAction<PaymentCatalogSyncResult[]>(async (session) => {
-    const tenantId = session.user.tenantId || config.tenantId;
+    // Platform staff may sync on behalf of a tenant (e.g. right after claiming
+    // a charger for them); the override is re-validated in
+    // syncPaymentCatalogAction, but the Hasura reads here need it too.
+    let tenantId = session.user.tenantId || config.tenantId;
+    if (options?.tenantIdOverride) {
+      const roles = session.user.roles ?? [];
+      if (!roles.includes('platform-admin') && !roles.includes('admin')) {
+        throw new Error('Only platform staff can sync on behalf of another tenant');
+      }
+      tenantId = options.tenantIdOverride;
+    }
 
     const res = await fetch(config.apiUrl, {
       method: 'POST',
@@ -162,7 +173,9 @@ export async function syncTariffToPaymentAction(
     };
     const entries = buildCatalogSyncEntries(business, tariff, evses, `tenant-${tenantId}`);
 
-    const result = await syncPaymentCatalogAction(entries);
+    const result = await syncPaymentCatalogAction(entries, {
+      tenantIdOverride: options?.tenantIdOverride,
+    });
     if (!result.success) {
       throw new Error(result.error);
     }

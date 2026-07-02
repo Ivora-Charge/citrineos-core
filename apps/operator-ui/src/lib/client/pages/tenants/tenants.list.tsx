@@ -15,6 +15,11 @@ import { AccessDeniedFallback } from '@lib/utils/AccessDeniedFallback';
 import { ActionType, ResourceType } from '@lib/utils/access.types';
 import { AUDIT_LOGS_LIST_QUERY, TENANTS_LIST_QUERY } from '@lib/queries/tenants';
 import { ACTING_TENANT_KEY } from '@lib/client/hooks/useTenantId';
+import { Input } from '@lib/client/components/ui/input';
+import {
+  listInventoryAction,
+  moveToInventoryAction,
+} from '@lib/server/actions/claimCharger';
 import { heading2Style, pageMargin } from '@lib/client/styles/page';
 import { buttonIconSize } from '@lib/client/styles/icon';
 
@@ -56,6 +61,37 @@ export const TenantsList = () => {
     sorters: [{ field: 'createdAt', order: 'desc' }],
     meta: { gqlQuery: AUDIT_LOGS_LIST_QUERY },
   });
+
+  // Charger inventory (Phase 4): units registered under the Ivora Inventory
+  // tenant, waiting to be claimed by a customer.
+  const [inventory, setInventory] = useState<any[] | null>(null);
+  const [inventoryError, setInventoryError] = useState<string | null>(null);
+  const [moveName, setMoveName] = useState('');
+  const loadInventory = async () => {
+    const res = await listInventoryAction();
+    if (res.success) {
+      setInventory(res.data);
+      setInventoryError(null);
+    } else {
+      setInventoryError(res.error);
+    }
+  };
+  useEffect(() => {
+    void loadInventory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const moveToInventory = async () => {
+    if (!moveName.trim()) return;
+    const res = await moveToInventoryAction(moveName.trim());
+    if (res.success) {
+      toast.success(`${res.data.ocppConnectionName} moved to inventory.`);
+      setMoveName('');
+      await loadInventory();
+    } else {
+      toast.error(res.error);
+    }
+  };
 
   return (
     <CanAccess
@@ -124,6 +160,62 @@ export const TenantsList = () => {
                         {actingTenant === String(t.id) ? 'acting as' : 'act as'}
                       </Button>
                     </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className={pageMargin}>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <h2 className={heading2Style}>Charger inventory</h2>
+            <p className="text-sm text-muted-foreground">
+              Units under the &quot;Ivora Inventory&quot; tenant, waiting to be claimed by a
+              customer (by the serial on the unit, or its station id).
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Input
+              className="w-48"
+              placeholder="station id, e.g. cp004"
+              value={moveName}
+              onChange={(e) => setMoveName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && void moveToInventory()}
+            />
+            <Button variant="outline" onClick={() => void moveToInventory()}>
+              Move to inventory
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {inventoryError ? (
+            <p className="text-sm text-destructive">{inventoryError}</p>
+          ) : inventory === null ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : inventory.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Inventory is empty.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-muted-foreground">
+                  <th className="py-2 pr-4">Station</th>
+                  <th className="py-2 pr-4">Serial</th>
+                  <th className="py-2 pr-4">Vendor / Model</th>
+                  <th className="py-2">Online</th>
+                </tr>
+              </thead>
+              <tbody>
+                {inventory.map((s) => (
+                  <tr key={s.id} className="border-b">
+                    <td className="py-2 pr-4 font-mono">{s.ocppConnectionName}</td>
+                    <td className="py-2 pr-4 font-mono">{s.serial || '—'}</td>
+                    <td className="py-2 pr-4">
+                      {[s.vendor, s.model].filter(Boolean).join(' / ') || '—'}
+                    </td>
+                    <td className="py-2">{s.isOnline ? 'yes' : 'no'}</td>
                   </tr>
                 ))}
               </tbody>

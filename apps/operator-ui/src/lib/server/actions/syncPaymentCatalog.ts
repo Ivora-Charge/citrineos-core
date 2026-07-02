@@ -51,6 +51,7 @@ export interface PaymentCatalogSyncResult {
  */
 export async function syncPaymentCatalogAction(
   entries: PaymentCatalogSyncEntry[],
+  options?: { tenantIdOverride?: string },
 ): Promise<ActionResult<PaymentCatalogSyncResult[]>> {
   return authedAction<PaymentCatalogSyncResult[]>(async (session) => {
     const baseUrl = config.paymentServiceUrl;
@@ -66,7 +67,17 @@ export async function syncPaymentCatalogAction(
     // Prefer the authoritative tenant id from the session (Keycloak sets it).
     // The generic dev auth provider does not populate it, so fall back to the
     // configured default tenant -- mirrors useTenantId() on the client.
-    const tenantId = session.user.tenantId || config.tenantId;
+    // Platform staff (who carry no tenant claim) may act on behalf of a
+    // specific tenant, e.g. when claiming a charger for them; tenant users
+    // can never override their own binding.
+    let tenantId = session.user.tenantId || config.tenantId;
+    if (options?.tenantIdOverride) {
+      const roles = session.user.roles ?? [];
+      if (!roles.includes('platform-admin') && !roles.includes('admin')) {
+        throw new Error('Only platform staff can sync on behalf of another tenant');
+      }
+      tenantId = options.tenantIdOverride;
+    }
     const url = `${baseUrl.replace(/\/$/, '')}/api/catalog/sync`;
 
     const results: PaymentCatalogSyncResult[] = [];

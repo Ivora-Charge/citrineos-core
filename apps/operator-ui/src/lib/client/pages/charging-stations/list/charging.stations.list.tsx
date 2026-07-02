@@ -12,6 +12,7 @@ import {
   getChargingStationsFilters,
 } from '@lib/client/pages/charging-stations/columns';
 import { ChargingStationClass } from '@lib/cls/charging.station.dto';
+import { ClaimChargerButton } from '@lib/client/pages/charging-stations/claim.charger.button';
 import { CHARGING_STATIONS_LIST_QUERY } from '@lib/queries/charging.stations';
 import { ActionType, ResourceType } from '@lib/utils/access.types';
 import { AccessDeniedFallback } from '@lib/utils/AccessDeniedFallback';
@@ -58,6 +59,7 @@ export const ChargingStationsList = () => {
         <h2 className={heading2Style}>{translate('ChargingStations.ChargingStations')}</h2>
         <div className={tableSearchFlex}>
           <CanAccess resource={ResourceType.CHARGING_STATIONS} action={ActionType.CREATE}>
+            <ClaimChargerButton />
             <Button variant="success" onClick={() => push(`/${MenuSection.CHARGING_STATIONS}/new`)}>
               <Plus className={buttonIconSize} />
               {translate('buttons.add')} {translate('ChargingStations.chargingStation')}
