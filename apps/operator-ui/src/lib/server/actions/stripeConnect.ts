@@ -16,6 +16,8 @@ export interface ConnectStatus {
   stripe_account_id?: string | null;
   charges_enabled: boolean;
   details_submitted: boolean;
+  disabled_reason?: string | null;
+  requirements_due?: string[];
 }
 
 const isPlatformAdmin = (roles: string[]) =>

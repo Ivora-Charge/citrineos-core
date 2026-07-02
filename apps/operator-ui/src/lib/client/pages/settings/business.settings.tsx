@@ -311,11 +311,15 @@ export const BusinessSettings = () => {
                       <span className="text-sm text-muted-foreground">
                         {connectStatus.charges_enabled
                           ? '✓ Stripe account active — payments enabled'
-                          : connectStatus.details_submitted
-                            ? 'Details submitted — Stripe is reviewing'
-                            : connectStatus.stripe_account_id?.startsWith('acct_')
-                              ? 'Onboarding not finished'
-                              : 'No Stripe account connected yet'}
+                          : (connectStatus.requirements_due?.length ?? 0) > 0
+                            ? `Action needed in Stripe: ${connectStatus.requirements_due!
+                                .map((r) => r.split('.').pop()?.replace(/_/g, ' '))
+                                .join(', ')} — click the button to continue`
+                            : connectStatus.details_submitted
+                              ? 'Details submitted — Stripe is reviewing'
+                              : connectStatus.stripe_account_id?.startsWith('acct_')
+                                ? 'Onboarding not finished'
+                                : 'No Stripe account connected yet'}
                       </span>
                     )}
                   </div>
