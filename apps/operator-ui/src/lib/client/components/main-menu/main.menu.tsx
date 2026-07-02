@@ -37,6 +37,7 @@ export enum MenuSection {
   TARIFFS = 'tariffs',
   PARTNERS = 'partners',
   TENANTS = 'tenants',
+  FLEET = 'fleet',
   SETTINGS = 'settings',
 }
 
@@ -115,6 +116,11 @@ export const MainMenu = ({ activeSection }: MainMenuProps) => {
             key: `/${MenuSection.TENANTS}`,
             label: 'Tenants',
             icon: <Building2 className={sidebarIconSize} />,
+          },
+          {
+            key: `/${MenuSection.FLEET}`,
+            label: 'Fleet',
+            icon: <EvCharger className={sidebarIconSize} />,
           },
         ]
       : []),
