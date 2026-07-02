@@ -9,6 +9,7 @@ import { RefreshCw } from 'lucide-react';
 import { Button } from '@lib/client/components/ui/button';
 import { Card, CardContent, CardHeader } from '@lib/client/components/ui/card';
 import { fleetOverviewAction, type FleetOverview } from '@lib/server/actions/fleetOverview';
+import { chargingStatsAction, type ChargingStats } from '@lib/server/actions/chargingStats';
 import { heading2Style, heading3Style, pageMargin } from '@lib/client/styles/page';
 import { buttonIconSize } from '@lib/client/styles/icon';
 
@@ -21,18 +22,31 @@ const ago = (iso: string) => {
 
 /** Cross-tenant fleet health for Ivora support (platform staff only; the
  * server action rejects tenant users). */
+const money = (subunits: number, currency: string) => {
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency.toUpperCase(),
+    }).format(subunits / 100);
+  } catch {
+    return `${(subunits / 100).toFixed(2)} ${currency.toUpperCase()}`;
+  }
+};
+
 export const FleetOverviewPage = () => {
   const [data, setData] = useState<FleetOverview | null>(null);
+  const [stats, setStats] = useState<ChargingStats | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const res = await fleetOverviewAction();
+    const [res, statsRes] = await Promise.all([fleetOverviewAction(), chargingStatsAction()]);
     if (res.success) {
       setData(res.data);
       setErr(null);
     } else {
       setErr(res.error);
     }
+    if (statsRes.success) setStats(statsRes.data);
   }, []);
   useEffect(() => {
     void load();
@@ -135,6 +149,55 @@ export const FleetOverviewPage = () => {
                 ))}
               </tbody>
             </table>
+          )}
+        </section>
+
+        <section>
+          <h3 className={heading3Style}>Energy & revenue</h3>
+          {!stats ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground mb-2">
+                Fleet-wide: {stats.energy.days30.sessions} sessions /{' '}
+                {stats.energy.days30.kwh.toFixed(1)} kWh in the last 30 days (
+                {stats.energy.total.sessions} sessions /{' '}
+                {stats.energy.total.kwh.toFixed(1)} kWh all time). Revenue is what was
+                actually captured via Stripe (hold + overage).
+              </p>
+              {stats.revenue.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No captured payments yet.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-muted-foreground">
+                      <th className="py-2 pr-4">Tenant</th>
+                      <th className="py-2 pr-4">Today</th>
+                      <th className="py-2 pr-4">7 days</th>
+                      <th className="py-2 pr-4">30 days</th>
+                      <th className="py-2 pr-4">All time</th>
+                      <th className="py-2">Paid sessions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stats.revenue.map((r) => (
+                      <tr key={`${r.tenant_id}-${r.currency}`} className="border-b">
+                        <td className="py-2 pr-4">
+                          {stats.tenantNames?.[r.tenant_id ?? ''] ?? r.tenant_id ?? '—'}
+                        </td>
+                        <td className="py-2 pr-4">{money(r.today.revenue_subunits, r.currency)}</td>
+                        <td className="py-2 pr-4">{money(r.days7.revenue_subunits, r.currency)}</td>
+                        <td className="py-2 pr-4">{money(r.days30.revenue_subunits, r.currency)}</td>
+                        <td className="py-2 pr-4 font-medium">
+                          {money(r.total.revenue_subunits, r.currency)}
+                        </td>
+                        <td className="py-2">{r.total.sessions}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </>
           )}
         </section>
 
