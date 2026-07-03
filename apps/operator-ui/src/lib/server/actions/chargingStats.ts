@@ -23,6 +23,14 @@ export interface RevenueBucket {
   revenue_subunits: number;
 }
 
+export interface DailyBucket {
+  /** UTC day, YYYY-MM-DD */
+  day: string;
+  sessions: number;
+  kwh: number;
+  revenue_subunits: number;
+}
+
 export interface ChargingStats {
   tenantId: number | null; // null = all tenants (platform view)
   energy: { today: StatBucket; days7: StatBucket; days30: StatBucket; total: StatBucket };
@@ -34,6 +42,11 @@ export interface ChargingStats {
     days30: RevenueBucket;
     total: RevenueBucket;
   }>;
+  /** Last 30 UTC days, oldest first, gaps zero-filled (for the trend charts).
+   * Sessions/kWh bucket on the transaction's createdAt; revenue on captured_at. */
+  daily: DailyBucket[];
+  /** Currency of the daily revenue series (first seen; one per tenant in practice). */
+  dailyCurrency: string;
   /** tenant id -> display name; only populated for the platform-wide view. */
   tenantNames?: Record<string, string>;
 }
@@ -108,6 +121,46 @@ export async function chargingStatsAction(
       tenantNames = Object.fromEntries(t.Tenants.map((x) => [String(x.id), x.name]));
     }
 
+    // Daily buckets for the trend charts: raw rows for the window, bucketed
+    // here by UTC day (Hasura has no date_trunc grouping without a view; a
+    // tenant's 30-day row count is small). Revenue rows come from the
+    // payment_transaction_revenue view Hasura already tracks.
+    const dailyData = await hasuraAdmin<{
+      Transactions: Array<{ createdAt: string; totalKwh: number | null }>;
+      payment_transaction_revenue: Array<{
+        captured_at: string | null;
+        total_received: number | null;
+        currency: string | null;
+      }>;
+    }>(`query {
+      Transactions(where: {${tenantFilter} createdAt: {_gte: "${starts.days30}"}}) {
+        createdAt totalKwh
+      }
+      payment_transaction_revenue(where: {${tenantFilter} captured_at: {_gte: "${starts.days30}"}}) {
+        captured_at total_received currency
+      }
+    }`);
+    const dayKey = (iso: string) => iso.slice(0, 10);
+    const daily = new Map<string, DailyBucket>();
+    for (let i = 29; i >= 0; i--) {
+      const day = dayKey(new Date(Date.now() - i * 864e5).toISOString());
+      daily.set(day, { day, sessions: 0, kwh: 0, revenue_subunits: 0 });
+    }
+    for (const t of dailyData.Transactions) {
+      const b = daily.get(dayKey(t.createdAt));
+      if (b) {
+        b.sessions += 1;
+        b.kwh += Number(t.totalKwh ?? 0);
+      }
+    }
+    let dailyCurrency = '';
+    for (const r of dailyData.payment_transaction_revenue) {
+      if (!r.captured_at) continue;
+      const b = daily.get(dayKey(r.captured_at));
+      if (b) b.revenue_subunits += r.total_received ?? 0;
+      if (!dailyCurrency && r.currency) dailyCurrency = r.currency;
+    }
+
     return {
       tenantNames,
       tenantId: effectiveTenant,
@@ -118,6 +171,8 @@ export async function chargingStatsAction(
         total: bucket('total'),
       },
       revenue,
+      daily: Array.from(daily.values()),
+      dailyCurrency: dailyCurrency || 'USD',
     };
   });
 }

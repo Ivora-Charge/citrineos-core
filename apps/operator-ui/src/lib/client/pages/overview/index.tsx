@@ -9,6 +9,7 @@ import { EnergyRevenueCard } from '@lib/client/pages/overview/energy-revenue/ene
 import { LocationsCard } from '@lib/client/pages/overview/locations/locations.card';
 import { OnlineStatusCard } from '@lib/client/pages/overview/online-status/online.status.card';
 import { PluginSuccessRateCard } from '@lib/client/pages/overview/plugin-success-rate/plugin.success.rate.card';
+import { TrendsCard } from '@lib/client/pages/overview/trends/trends.card';
 
 export const Overview = () => {
   return (
@@ -19,6 +20,7 @@ export const Overview = () => {
         <PluginSuccessRateCard />
         <EnergyRevenueCard />
       </div>
+      <TrendsCard />
       <div className="grid grid-cols-1 lg:grid-cols-9 gap-4">
         <div className="lg:col-span-5 w-full h-150">
           <LocationsCard />
