@@ -40,6 +40,17 @@ object_relationships:
 - name: Tenant
   using:
     foreign_key_constraint_on: tenantId
+# Money received for this transaction, from the payment service's
+# payment_transaction_revenue view (subunit amounts; see that table's yaml).
+- name: Revenue
+  using:
+    manual_configuration:
+      column_mapping:
+        id: transaction_pk
+      insertion_order: null
+      remote_table:
+        name: payment_transaction_revenue
+        schema: public
 array_relationships:
 - name: ChargingNeeds
   using:

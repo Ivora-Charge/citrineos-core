@@ -49,6 +49,7 @@
 - "!include public_Tenants.yaml"
 - "!include public_TransactionEvents.yaml"
 - "!include public_Transactions.yaml"
+- "!include public_payment_transaction_revenue.yaml"
 - "!include public_VariableAttributes.yaml"
 - "!include public_VariableCharacteristics.yaml"
 - "!include public_VariableMonitoringStatuses.yaml"

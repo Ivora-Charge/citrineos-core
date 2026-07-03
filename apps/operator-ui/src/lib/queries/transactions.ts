@@ -22,6 +22,13 @@ export const TRANSACTION_LIST_QUERY = gql`
       evseId
       remoteStartId
       totalKwh
+      revenue: Revenue {
+        total_received
+        captured_amount
+        overage_amount
+        currency
+        captured_at
+      }
       startTime
       endTime
       createdAt
@@ -120,6 +127,13 @@ export const GET_TRANSACTIONS_FOR_AUTHORIZATION = gql`
       evseId
       remoteStartId
       totalKwh
+      revenue: Revenue {
+        total_received
+        captured_amount
+        overage_amount
+        currency
+        captured_at
+      }
       startTime
       endTime
       createdAt
@@ -187,6 +201,13 @@ export const GET_TRANSACTION_LIST_FOR_STATION = gql`
       evseId
       remoteStartId
       totalKwh
+      revenue: Revenue {
+        total_received
+        captured_amount
+        overage_amount
+        currency
+        captured_at
+      }
       startTime
       endTime
       createdAt
@@ -263,6 +284,13 @@ export const TRANSACTION_GET_QUERY = gql`
       remoteStartId
       authorizationId
       totalKwh
+      revenue: Revenue {
+        total_received
+        captured_amount
+        overage_amount
+        currency
+        captured_at
+      }
       startTime
       endTime
       createdAt

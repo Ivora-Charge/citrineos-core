@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the CitrineOS Project
+#
+# SPDX-License-Identifier: Apache-2.0
+# Money received per OCPP transaction. A read-only SQL view created by the
+# payment service (citrineos-payment db/init_db.py) joining payment_checkouts
+# to Transactions via the station + charger transactionId; exposed on
+# Transactions as the "Revenue" object relationship. Amounts are in currency
+# subunits (cents).
+table:
+  name: payment_transaction_revenue
+  schema: public
+select_permissions:
+- role: user
+  permission:
+    columns: '*'
+    filter:
+      tenantId:
+        _eq: x-hasura-tenant-id
+    allow_aggregations: true
+  comment: ''
+- role: tenant-admin
+  permission:
+    columns: '*'
+    filter:
+      tenantId:
+        _eq: x-hasura-tenant-id
+    allow_aggregations: true
+- role: tenant-viewer
+  permission:
+    columns: '*'
+    filter:
+      tenantId:
+        _eq: x-hasura-tenant-id
+    allow_aggregations: true

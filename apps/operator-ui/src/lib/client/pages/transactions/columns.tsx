@@ -104,6 +104,25 @@ export const transactionsColumns: ColumnConfiguration[] = [
       ),
   },
   {
+    // Money received for the session, from the payment service (view joined
+    // via the Transactions.Revenue relationship). Subunits -> major units.
+    // Empty for unpaid/RFID sessions and for holds still awaiting settlement.
+    key: 'revenue',
+    header: 'Revenue',
+    visible: true,
+    cellRender: ({ row }: CellContext<TransactionClass, unknown>) => {
+      const revenue = row.original.revenue;
+      if (revenue?.total_received == null) {
+        return <span>{EMPTY_VALUE}</span>;
+      }
+      return (
+        <span>
+          {(revenue.total_received / 100).toFixed(2)} {revenue.currency ?? ''}
+        </span>
+      );
+    },
+  },
+  {
     key: 'status',
     header: 'Status',
     visible: true,

@@ -47,4 +47,13 @@ export class TransactionClass implements Partial<TransactionDto> {
   startTime?: string;
   endTime?: string;
   customData?: any;
+  // Payment-service revenue for this session (payment_transaction_revenue
+  // view via the Hasura Revenue relationship). Amounts in currency subunits.
+  revenue?: {
+    total_received?: number | null;
+    captured_amount?: number | null;
+    overage_amount?: number | null;
+    currency?: string | null;
+    captured_at?: string | null;
+  } | null;
 }
