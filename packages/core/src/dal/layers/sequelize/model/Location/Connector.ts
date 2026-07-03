@@ -199,6 +199,24 @@ export class Connector extends Model implements ConnectorDto {
     return (max ?? 0) + 1;
   }
 
+  /**
+   * Run a connector-creating operation that embeds a nextStationSerial()
+   * value, retrying once on a unique violation: two guns processed
+   * concurrently (e.g. both Started events of a two-gun charger) can compute
+   * the same serial; the retry recomputes it with the competitor's row now
+   * visible.
+   */
+  static async withSerialRetry<T>(operation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } catch (e: any) {
+      if (e?.name === 'SequelizeUniqueConstraintError') {
+        return await operation();
+      }
+      throw e;
+    }
+  }
+
   @BeforeCreate
   static async resolveStationId(instance: Connector): Promise<void> {
     if (instance.stationId == null && instance.ocppConnectionName && instance.tenantId != null) {

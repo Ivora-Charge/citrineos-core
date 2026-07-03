@@ -377,48 +377,52 @@ export class SequelizeLocationRepository
     values: Partial<Connector>,
   ): Promise<Connector | undefined> {
     let result: Connector | undefined;
-    await this.s.transaction(async (sequelizeTransaction) => {
-      const [evse] = await Evse.findOrCreate({
-        where: { tenantId, ocppConnectionName, evseTypeId: ocppEvseId },
-        defaults: { tenantId, ocppConnectionName, evseTypeId: ocppEvseId },
-        transaction: sequelizeTransaction,
-      });
-      const [savedConnector, connectorCreated] = await this.connector.readOrCreateByQuery(
-        tenantId,
-        {
-          where: {
-            tenantId,
-            ocppConnectionName,
-            evseId: evse.id,
-            evseTypeConnectorId: ocppConnectorId,
-          },
-          defaults: {
-            ...values,
-            tenantId,
-            ocppConnectionName,
-            evseId: evse.id,
-            evseTypeConnectorId: ocppConnectorId,
-            connectorId: await Connector.nextStationSerial(
-              tenantId,
-              ocppConnectionName,
-              sequelizeTransaction,
-            ),
-          },
-          transaction: sequelizeTransaction,
-        },
-      );
-      if (!connectorCreated) {
-        const updatedConnectors = await this.connector.updateAllByQuery(tenantId, values, {
-          where: {
-            id: savedConnector.id,
-          },
+    // The serial retry wraps the WHOLE transaction: a unique violation aborts
+    // the postgres transaction, so recomputing inside it would fail (25P02).
+    await Connector.withSerialRetry(() =>
+      this.s.transaction(async (sequelizeTransaction) => {
+        const [evse] = await Evse.findOrCreate({
+          where: { tenantId, ocppConnectionName, evseTypeId: ocppEvseId },
+          defaults: { tenantId, ocppConnectionName, evseTypeId: ocppEvseId },
           transaction: sequelizeTransaction,
         });
-        result = updatedConnectors.length > 0 ? updatedConnectors[0] : undefined;
-      } else {
-        result = savedConnector;
-      }
-    });
+        const [savedConnector, connectorCreated] = await this.connector.readOrCreateByQuery(
+          tenantId,
+          {
+            where: {
+              tenantId,
+              ocppConnectionName,
+              evseId: evse.id,
+              evseTypeConnectorId: ocppConnectorId,
+            },
+            defaults: {
+              ...values,
+              tenantId,
+              ocppConnectionName,
+              evseId: evse.id,
+              evseTypeConnectorId: ocppConnectorId,
+              connectorId: await Connector.nextStationSerial(
+                tenantId,
+                ocppConnectionName,
+                sequelizeTransaction,
+              ),
+            },
+            transaction: sequelizeTransaction,
+          },
+        );
+        if (!connectorCreated) {
+          const updatedConnectors = await this.connector.updateAllByQuery(tenantId, values, {
+            where: {
+              id: savedConnector.id,
+            },
+            transaction: sequelizeTransaction,
+          });
+          result = updatedConnectors.length > 0 ? updatedConnectors[0] : undefined;
+        } else {
+          result = savedConnector;
+        }
+      }),
+    );
     return result;
   }
 
