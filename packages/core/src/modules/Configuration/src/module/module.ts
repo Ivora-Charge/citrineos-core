@@ -293,6 +293,17 @@ export class ConfigurationModule extends AbstractModule {
           imsi: chargingStation.modem?.imsi,
         }),
       );
+      // The router stamps isOnline/protocol at websocket-upgrade time, but a
+      // never-seen charger has no ChargingStations row at that moment (this
+      // boot just created it), so that stamp was skipped and the station
+      // would show offline (and protocol-dependent behavior would misroute)
+      // until its next reconnect. Re-stamp now that the row exists.
+      await this._locationRepository.setChargingStationIsOnlineAndOCPPVersion(
+        tenantId,
+        ocppConnectionName,
+        true,
+        (message.protocol as OCPPVersion) ?? null,
+      );
       await this._deviceModelService.updateDeviceModel(
         chargingStation,
         tenantId,
@@ -875,6 +886,14 @@ export class ConfigurationModule extends AbstractModule {
           meterType: request.meterType,
           meterSerialNumber: request.meterSerialNumber,
         }),
+      );
+      // Same as the 2.x handler: re-stamp isOnline/protocol for a first-boot
+      // station whose row didn't exist at websocket-upgrade time.
+      await this._locationRepository.setChargingStationIsOnlineAndOCPPVersion(
+        tenantId,
+        ocppConnectionName,
+        true,
+        (message.protocol as OCPPVersion) ?? null,
       );
     })().catch((error) => {
       this._logger.error(`Error updating station ${ocppConnectionName} with boot info:`, error);

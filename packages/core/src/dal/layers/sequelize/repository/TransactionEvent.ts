@@ -168,6 +168,11 @@ export class SequelizeTransactionEventRepository
               evseId: evse.id,
               evseTypeConnectorId: value.evse.connectorId,
             },
+            // Station-scoped serial derived, not copied from the per-EVSE
+            // 2.0.1 value (see the create branch below).
+            defaults: {
+              connectorId: await Connector.nextStationSerial(tenantId, ocppConnectionName),
+            },
             include: [Tariff],
           });
           connectorId = connector.id;
@@ -248,7 +253,13 @@ export class SequelizeTransactionEventRepository
                 evseId: evse.id,
                 evseTypeConnectorId: value.evse.connectorId,
               },
-              defaults: { connectorId: value.evse.connectorId },
+              // 2.0.1 connector numbers are per EVSE (both guns of a two-gun
+              // unit report connectorId 1), so the station-scoped serial must
+              // be derived, not copied, or the (stationId, connectorId)
+              // unique collides.
+              defaults: {
+                connectorId: await Connector.nextStationSerial(tenantId, ocppConnectionName),
+              },
               include: [Tariff],
             });
             newTransaction.set('connectorId', connector.id);

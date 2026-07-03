@@ -19,6 +19,7 @@ import type {
   TransactionDto,
 } from '@citrineos/base';
 import { DEFAULT_TENANT_ID, OCPP1_6_Namespace } from '@citrineos/base';
+import type { Transaction as SequelizeTransaction } from 'sequelize';
 import {
   BeforeCreate,
   BeforeUpdate,
@@ -178,6 +179,25 @@ export class Connector extends Model implements ConnectorDto {
 
   @BelongsTo(() => Tenant, 'tenantId')
   declare tenant?: TenantDto;
+
+  /**
+   * Next free station-scoped connectorId serial for a station. OCPP 2.0.1
+   * numbers connectors per EVSE (every EVSE's first connector is 1), so the
+   * raw 2.0.1 value cannot be stored as the station serial -- on multi-EVSE
+   * chargers it collides with the (stationId, connectorId) unique. Writers
+   * creating a connector from 2.0.1 identity derive the serial here.
+   */
+  static async nextStationSerial(
+    tenantId: number,
+    ocppConnectionName: string,
+    transaction?: SequelizeTransaction,
+  ): Promise<number> {
+    const max = await Connector.max<number, Connector>('connectorId', {
+      where: { tenantId, ocppConnectionName },
+      transaction,
+    });
+    return (max ?? 0) + 1;
+  }
 
   @BeforeCreate
   static async resolveStationId(instance: Connector): Promise<void> {
