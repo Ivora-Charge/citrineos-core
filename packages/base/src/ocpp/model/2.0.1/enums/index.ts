@@ -361,6 +361,9 @@ export enum MessageFormatEnumType {
   HTML = 'HTML',
   URI = 'URI',
   UTF8 = 'UTF8',
+  // Not in the OCPP 2.0.1 spec (added in 2.1): some vendors (e.g. Renova)
+  // connect as 2.0.1 but accept the 2.1 QR format, so we pass it through.
+  QRCODE = 'QRCODE',
 }
 
 /**

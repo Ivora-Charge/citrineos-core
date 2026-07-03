@@ -75,8 +75,8 @@
       "javaType": "MessageFormatEnum",
       "type": "string",
       "additionalProperties": true,
-      "enum": ["ASCII", "HTML", "URI", "UTF8"],
-      "tsEnumNames": ["ASCII", "HTML", "URI", "UTF8"]
+      "enum": ["ASCII", "HTML", "URI", "UTF8", "QRCODE"],
+      "tsEnumNames": ["ASCII", "HTML", "URI", "UTF8", "QRCODE"]
     },
     "AdditionalInfoType": {
       "description": "Contains a case insensitive identifier to use for the authorization and the type of authorization to support multiple forms of identifiers.\r\n",

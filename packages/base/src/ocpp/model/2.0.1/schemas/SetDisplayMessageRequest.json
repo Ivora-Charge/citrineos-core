@@ -19,8 +19,8 @@
       "javaType": "MessageFormatEnum",
       "type": "string",
       "additionalProperties": true,
-      "enum": ["ASCII", "HTML", "URI", "UTF8"],
-      "tsEnumNames": ["ASCII", "HTML", "URI", "UTF8"]
+      "enum": ["ASCII", "HTML", "URI", "UTF8", "QRCODE"],
+      "tsEnumNames": ["ASCII", "HTML", "URI", "UTF8", "QRCODE"]
     },
     "MessagePriorityEnumType": {
       "description": "Message_ Info. Priority. Message_ Priority_ Code\r\nurn:x-enexis:ecdm:uid:1:569253\r\nWith what priority should this message be shown\r\n",

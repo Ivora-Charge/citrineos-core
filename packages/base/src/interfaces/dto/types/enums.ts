@@ -343,7 +343,8 @@ export const LocationParkingEnumSchema = z.enum([
   'UndergroundGarage',
 ]);
 
-export const MessageFormatEnumSchema = z.enum(['ASCII', 'HTML', 'URI', 'UTF8']);
+// QRCODE is OCPP 2.1 (and passed through to 2.0.1 vendors that accept it).
+export const MessageFormatEnumSchema = z.enum(['ASCII', 'HTML', 'URI', 'UTF8', 'QRCODE']);
 
 export const MonitorEnumSchema = z.enum([
   'UpperThreshold',
