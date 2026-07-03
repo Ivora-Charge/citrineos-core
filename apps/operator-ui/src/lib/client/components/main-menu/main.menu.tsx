@@ -17,6 +17,7 @@ import {
   MapPin,
   Receipt,
   Users,
+  Wrench,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
@@ -27,6 +28,8 @@ import { ConnectionModal } from '@lib/client/components/modals/shared/connection
 import { LogoutButton } from '@lib/client/components/logout-button';
 import { useCan, useTranslate } from '@refinedev/core';
 import { ActionType, ResourceType } from '@lib/utils/access.types';
+import { useUiMode } from '@lib/client/hooks/useUiMode';
+import { Switch } from '@lib/client/components/ui/switch';
 
 export enum MenuSection {
   OVERVIEW = 'overview',
@@ -74,43 +77,60 @@ export const MainMenu = ({ activeSection }: MainMenuProps) => {
     action: ActionType.LIST,
   });
 
+  // Simple mode (the default) is the tenant-operator surface: chargers,
+  // sessions, pricing, business. Everything topology/OCPP/roaming lives
+  // behind the Advanced toggle -- see useUiMode.
+  const { advanced, setAdvanced } = useUiMode();
+
   const mainMenuItems: MenuItem[] = [
     {
       key: `/${MenuSection.OVERVIEW}`,
       label: translate('menu.overview'),
       icon: <Home className={sidebarIconSize} />,
     },
-    {
-      key: `/${MenuSection.LOCATIONS}`,
-      label: translate('Locations.Locations'),
-      icon: <MapPin className={sidebarIconSize} />,
-    },
+    ...(advanced
+      ? [
+          {
+            key: `/${MenuSection.LOCATIONS}`,
+            label: translate('Locations.Locations'),
+            icon: <MapPin className={sidebarIconSize} />,
+          },
+        ]
+      : []),
     {
       key: `/${MenuSection.CHARGING_STATIONS}`,
-      label: translate('ChargingStations.ChargingStations'),
+      label: advanced ? translate('ChargingStations.ChargingStations') : 'Chargers',
       icon: <EvCharger className={sidebarIconSize} />,
     },
-    {
-      key: `/${MenuSection.AUTHORIZATIONS}`,
-      label: translate('Authorizations.Authorizations'),
-      icon: <Clipboard className={sidebarIconSize} />,
-    },
+    ...(advanced
+      ? [
+          {
+            key: `/${MenuSection.AUTHORIZATIONS}`,
+            label: translate('Authorizations.Authorizations'),
+            icon: <Clipboard className={sidebarIconSize} />,
+          },
+        ]
+      : []),
     {
       key: `/${MenuSection.TRANSACTIONS}`,
-      label: translate('Transactions.Transactions'),
+      label: advanced ? translate('Transactions.Transactions') : 'Sessions',
       icon: <ArrowLeftRight className={sidebarIconSize} />,
     },
     {
       key: `/${MenuSection.TARIFFS}`,
-      label: translate('Tariffs.Tariffs'),
+      label: advanced ? translate('Tariffs.Tariffs') : 'Pricing',
       icon: <Receipt className={sidebarIconSize} />,
     },
-    {
-      key: `/${MenuSection.PARTNERS}`,
-      label: translate('TenantPartners.TenantPartners'),
-      icon: <Users className={sidebarIconSize} />,
-    },
-    ...(canListTenants?.can
+    ...(advanced
+      ? [
+          {
+            key: `/${MenuSection.PARTNERS}`,
+            label: translate('TenantPartners.TenantPartners'),
+            icon: <Users className={sidebarIconSize} />,
+          },
+        ]
+      : []),
+    ...(advanced && canListTenants?.can
       ? [
           {
             key: `/${MenuSection.TENANTS}`,
@@ -175,6 +195,17 @@ export const MainMenu = ({ activeSection }: MainMenuProps) => {
 
         {/* Bottom Menu - Help Link */}
         <div className="border-t border-border p-3 flex flex-col gap-2 items-center">
+          <div
+            className={cn(
+              'flex items-center gap-2 py-2 text-sm text-muted-foreground',
+              collapsed && 'flex-col gap-1',
+            )}
+            title="Advanced mode: locations, authorizations, roaming partners, EVSE/connector topology, OCPP logs and configuration"
+          >
+            <Wrench className={sidebarIconSize} />
+            {!collapsed && <span>Advanced</span>}
+            <Switch checked={advanced} onCheckedChange={setAdvanced} aria-label="Advanced mode" />
+          </div>
           <ThemeToggle expanded={!collapsed} />
           <Button variant="ghost" onClick={() => setIsHelpOpen(true)} title="Help">
             <HelpCircle className={sidebarIconSize} />

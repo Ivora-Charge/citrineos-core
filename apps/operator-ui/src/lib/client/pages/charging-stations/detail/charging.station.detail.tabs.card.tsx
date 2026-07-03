@@ -26,6 +26,7 @@ import {
 import { cardTabsStyle } from '@lib/client/styles/card';
 import { useColumnPreferences } from '@lib/client/hooks/useColumnPreferences';
 import { useQueryState } from 'nuqs';
+import { useUiMode } from '@lib/client/hooks/useUiMode';
 
 enum ChargingStationDetailTabType {
   evses = 'evses',
@@ -49,23 +50,39 @@ export const ChargingStationDetailTabsCard = ({ id }: { id: number }) => {
 
   const [tab, setTab] = useQueryState(DETAIL_TAB_STATE);
 
+  // Simple mode hides the topology/OCPP tabs: hand-editing EVSE/connector
+  // rows or reading raw OCPP traffic is advanced-operator territory (the
+  // topology auto-creates from the charger's own messages). The tab enum is
+  // narrowed so a deep link to a hidden tab falls back too.
+  const { advanced } = useUiMode();
+  const visibleTabs = advanced
+    ? Object.keys(ChargingStationDetailTabType)
+    : [ChargingStationDetailTabType.transactions, ChargingStationDetailTabType.aggregated];
+  const defaultTab = advanced
+    ? ChargingStationDetailTabType.evses
+    : ChargingStationDetailTabType.transactions;
+
   return (
     <Card>
       <CardContent>
         <Tabs
-          value={
-            tab && tab in ChargingStationDetailTabType ? tab : ChargingStationDetailTabType.evses
-          }
+          value={tab && visibleTabs.includes(tab as ChargingStationDetailTabType) ? tab : defaultTab}
           onValueChange={(selectedTab: string) => setTab(selectedTab)}
         >
           <TabsList>
-            <TabsTrigger value={ChargingStationDetailTabType.evses}>EVSEs</TabsTrigger>
-            <TabsTrigger value={ChargingStationDetailTabType.ocppMessages}>
-              OCPP Messages
-            </TabsTrigger>
-            <TabsTrigger value={ChargingStationDetailTabType.configuration}>
-              Configuration
-            </TabsTrigger>
+            {advanced && (
+              <TabsTrigger value={ChargingStationDetailTabType.evses}>EVSEs</TabsTrigger>
+            )}
+            {advanced && (
+              <TabsTrigger value={ChargingStationDetailTabType.ocppMessages}>
+                OCPP Messages
+              </TabsTrigger>
+            )}
+            {advanced && (
+              <TabsTrigger value={ChargingStationDetailTabType.configuration}>
+                Configuration
+              </TabsTrigger>
+            )}
             <TabsTrigger value={ChargingStationDetailTabType.transactions}>
               {translate('Transactions.Transactions')}
             </TabsTrigger>
