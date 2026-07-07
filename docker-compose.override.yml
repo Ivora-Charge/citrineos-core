@@ -11,6 +11,14 @@ services:
     build:
       context: .
       dockerfile: ./apps/Server/deploy.Dockerfile
+    # Sequelize's default pool of 5 crashes the server under ~8 concurrent
+    # charging sessions (pressure test 2026-07-06: acquire-timeout storm ->
+    # process death -> fleet-wide disconnect). 30 rides out fleet bursts.
+    # Mirrors deploy/docker-compose.yml.
+    environment:
+      BOOTSTRAP_CITRINEOS_DATABASE_POOL_MAX: "30"
+      BOOTSTRAP_CITRINEOS_DATABASE_POOL_MIN: "5"
+      BOOTSTRAP_CITRINEOS_DATABASE_POOL_ACQUIRE: "30000"
 
   # Hasura lockdown (multi-tenant rollout Phase 2): admin secret for server-side
   # privileged access, JWT mode against the ivora Keycloak realm for everyone
