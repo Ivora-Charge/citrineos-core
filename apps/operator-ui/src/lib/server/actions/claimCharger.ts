@@ -110,11 +110,41 @@ const STATION_BY_SERIAL = `
   }
 `;
 
+// Same match as STATION_BY_SERIAL but across every tenant, to tell an
+// already-claimed unit apart from an unregistered one.
+const STATION_ANY_TENANT = `
+  query StationAnyTenant($serial: String!) {
+    ChargingStations(
+      where: {
+        _or: [
+          { chargePointSerialNumber: { _eq: $serial } }
+          { chargeBoxSerialNumber: { _eq: $serial } }
+          { ocppConnectionName: { _eq: $serial } }
+        ]
+      }
+    ) {
+      id
+      ocppConnectionName
+      tenantId
+    }
+  }
+`;
+
 const MOVE_STATION = `
-  mutation MoveStation($stationId: Int!, $tenantId: Int!, $locationId: Int) {
+  mutation MoveStation(
+    $stationId: Int!
+    $stationName: String!
+    $tenantId: Int!
+    $locationId: Int
+  ) {
+    # isOnline is forced false here because the claim immediately drops the
+    # live connection. The reconnect (under the new tenant) sets it true again;
+    # if the charger never comes back it correctly reads offline. Without this,
+    # the disconnect fires under the OLD tenant and the online flag is left
+    # stale-true forever (phantom-online).
     update_ChargingStations_by_pk(
       pk_columns: { id: $stationId }
-      _set: { tenantId: $tenantId, locationId: $locationId }
+      _set: { tenantId: $tenantId, locationId: $locationId, isOnline: false }
     ) {
       id
     }
@@ -122,6 +152,13 @@ const MOVE_STATION = `
       affected_rows
     }
     update_Connectors(where: { stationId: { _eq: $stationId } }, _set: { tenantId: $tenantId }) {
+      affected_rows
+    }
+    # The Boots row is keyed by the station name and carries its own tenantId.
+    # Without moving it, the charger's next BootNotification tries to INSERT a
+    # new Boots row under the new tenant and hits the PK unique constraint
+    # (seen on OCPP 1.6 units after a claim), leaving boot bookkeeping stale.
+    update_Boots(where: { id: { _eq: $stationName } }, _set: { tenantId: $tenantId }) {
       affected_rows
     }
   }
@@ -172,8 +209,35 @@ export async function claimChargerAction(input: {
       serial,
     });
     if (found.ChargingStations.length === 0) {
+      // Not in inventory. Distinguish "already claimed" from "never
+      // registered" so a re-claim doesn't send the admin to support: look the
+      // serial up across ALL tenants.
+      const anywhere = await hasuraAdmin<{ ChargingStations: any[] }>(STATION_ANY_TENANT, {
+        serial,
+      });
+      const mine = anywhere.ChargingStations.find((s) => s.tenantId === tenantId);
+      if (mine) {
+        throw new Error(
+          `Charger "${mine.ocppConnectionName}" is already claimed to your account -- nothing to do.`,
+        );
+      }
+      if (anywhere.ChargingStations.length > 0) {
+        throw new Error(
+          `Charger with serial "${serial}" is already claimed by another account -- contact Ivora support if this is your unit.`,
+        );
+      }
       throw new Error(
         `No unclaimed charger with serial "${serial}" -- check the number, or ask Ivora support if the unit was registered`,
+      );
+    }
+    if (found.ChargingStations.length > 1) {
+      // Vendor-default serials (e.g. "S001") repeat across units, so a serial
+      // match can be ambiguous. Refuse rather than silently claim an arbitrary
+      // one; the admin can disambiguate with the unique station id.
+      const ids = found.ChargingStations.map((s) => s.ocppConnectionName).join(', ');
+      throw new Error(
+        `Serial "${serial}" matches ${found.ChargingStations.length} chargers (${ids}). ` +
+          `Claim by the unique station id instead.`,
       );
     }
     const station = found.ChargingStations[0];
@@ -191,7 +255,12 @@ export async function claimChargerAction(input: {
       locationId = input.locationId;
     }
 
-    await hasuraAdmin(MOVE_STATION, { stationId: station.id, tenantId, locationId });
+    await hasuraAdmin(MOVE_STATION, {
+      stationId: station.id,
+      stationName: station.ocppConnectionName,
+      tenantId,
+      locationId,
+    });
     await reassignPaymentStation(station.ocppConnectionName, tenantId);
     // The live connection is registered under the inventory tenant; drop it so
     // the charger reconnects under its new owner.

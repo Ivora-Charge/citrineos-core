@@ -109,14 +109,47 @@ export const getChargingStationStatusCounts = (chargingStation: ChargingStationS
     [ChargingStationStatus.UNAVAILABLE]: 0,
     [ChargingStationStatus.FAULTED]: 0,
   };
+  // Status notifications arrive in one of two shapes depending on the query:
+  // a flat `statusNotifications` array, or nested under
+  // `LatestStatusNotifications[].StatusNotification` (what the list/detail
+  // queries actually return). Flatten both so the status is computed from the
+  // data that is really present -- otherwise `statusNotifications` is empty
+  // and every evse falls through to UNAVAILABLE.
+  const latestNested = (
+    (chargingStation as { LatestStatusNotifications?: Array<{ StatusNotification?: unknown }> })
+      ?.LatestStatusNotifications ?? []
+  )
+    .map((l) => l?.StatusNotification)
+    .filter((s): s is StatusNotificationDto => !!s);
+  const allStatusNotifications: StatusNotificationDto[] = [
+    ...(chargingStation?.statusNotifications ?? []),
+    ...latestNested,
+  ];
+
   const evses = chargingStation?.evses;
   if (evses && evses.length > 0) {
     for (const evse of evses) {
-      const latestStatusNotificationForEvse = chargingStation?.statusNotifications?.find(
-        (latestStatusNotification) =>
-          latestStatusNotification?.evseId === evse.id &&
-          latestStatusNotification?.connectorId === evse.connectors?.[0]?.id,
+      // Match on the OCPP evse id, not the DB primary key. StatusNotification
+      // .evseId is the OCPP serial int (1, 2, ...); on the Evse that value is
+      // `evseTypeId` ("the serial int used in OCPP 2.0.1 to refer to the
+      // EVSE"), NOT `evseId` (the eMI3 string, usually empty) and NOT `id`
+      // (the row PK). The previous code compared evseId against the PK and
+      // connectorId against evse.connectors?.[0]?.id -- connectors aren't
+      // nested on the evse in this query, so that clause never matched and
+      // every evse fell through to UNAVAILABLE.
+      const evseOcppId = (evse as EvseDto).evseTypeId;
+      const notificationsForEvse = allStatusNotifications.filter(
+        (sn) => sn?.evseId === evseOcppId,
       );
+      // Prefer the most recently updated notification for this evse.
+      const latestStatusNotificationForEvse = notificationsForEvse.reduce<
+        StatusNotificationDto | undefined
+      >((latest, sn) => {
+        if (!latest) return sn;
+        const a = new Date(sn.timestamp ?? sn.createdAt ?? 0).getTime();
+        const b = new Date(latest.timestamp ?? latest.createdAt ?? 0).getTime();
+        return a >= b ? sn : latest;
+      }, undefined);
       if (latestStatusNotificationForEvse) {
         const connectorStatus: ConnectorStatusEnumType =
           latestStatusNotificationForEvse?.connectorStatus ||

@@ -138,7 +138,13 @@ export const LocationsUpsert = ({ params, allowImageUpload = false }: LocationsU
 
   const { open } = useNotification();
 
-  const originalStationIdsRef = useRef<number[]>([]);
+  // Baseline set of station ids attached to this location at load time, used
+  // to diff adds/removes on save. Captured once, from the loaded record --
+  // NOT lazily from the first form change (that absorbed the user's first
+  // pick into the baseline on a location that started empty). null = not yet
+  // captured; on create it is captured as [] immediately below.
+  const originalStationIdsRef = useRef<number[] | null>(null);
+  const baselineCapturedRef = useRef(false);
   const [geoPoint, setGeoPoint] = useState<GeoPoint | undefined>(
     new GeoPoint(defaultLatitude, defaultLongitude),
   );
@@ -170,12 +176,23 @@ export const LocationsUpsert = ({ params, allowImageUpload = false }: LocationsU
   const chosenCountryName = chosenCountry?.name ?? '';
 
   useEffect(() => {
-    if (!originalStationIdsRef.current && currentChargingPool !== undefined) {
-      originalStationIdsRef.current = currentChargingPool
-        ? currentChargingPool.map((charger) => charger.id!)
-        : [];
+    if (baselineCapturedRef.current) return;
+    // Create: the baseline is definitively empty, capture right away so any
+    // station picked while creating is treated as an add.
+    if (!locationId) {
+      originalStationIdsRef.current = [];
+      baselineCapturedRef.current = true;
+      return;
     }
-  }, [currentChargingPool]);
+    // Edit: capture the loaded record's stations the first time the form's
+    // charging pool is populated from the query.
+    if (currentChargingPool !== undefined) {
+      originalStationIdsRef.current = (currentChargingPool || []).map(
+        (charger) => charger.id!,
+      );
+      baselineCapturedRef.current = true;
+    }
+  }, [currentChargingPool, locationId]);
 
   useEffect(() => {
     if (coordinates && coordinates.coordinates) {
@@ -185,9 +202,16 @@ export const LocationsUpsert = ({ params, allowImageUpload = false }: LocationsU
     }
   }, [coordinates]);
 
-  const processChargingPoolChanges = (locationId: string) => {
-    const prevStationIds = new Set(originalStationIdsRef.current);
-    const currentStationIds = new Set((currentChargingPool || []).map((charger) => charger.id!));
+  const processChargingPoolChanges = (locationId: string): Promise<unknown> => {
+    const prevStationIds = new Set(originalStationIdsRef.current ?? []);
+    // Read the pool straight from the form at submit time: a watch value
+    // captured in this callback's closure can be stale right after the last
+    // append/remove.
+    const pool: Array<{ id?: number }> =
+      form.getValues(LocationProps.chargingPool) || currentChargingPool || [];
+    const currentStationIds = new Set(
+      pool.map((charger) => charger.id!).filter((id) => id != null),
+    );
 
     const addedIds = [...currentStationIds].filter((id) => !prevStationIds.has(id));
     const removedIds = [...prevStationIds].filter((id) => !currentStationIds.has(id));
@@ -234,7 +258,11 @@ export const LocationsUpsert = ({ params, allowImageUpload = false }: LocationsU
       );
     }
 
-    Promise.all(updateOperations).catch((err: any) =>
+    // Reset the baseline so a subsequent save in the same session diffs
+    // against what was just persisted.
+    originalStationIdsRef.current = [...currentStationIds];
+
+    return Promise.all(updateOperations).catch((err: any) =>
       toast.error(
         `Failed to update charging stations on location due to error ${JSON.stringify(err)}`,
       ),
@@ -310,6 +338,13 @@ export const LocationsUpsert = ({ params, allowImageUpload = false }: LocationsU
       if (result) {
         const finalLocationId = locationId || (result as any).data?.id;
 
+        // Attach/detach the picked stations for BOTH create and edit. This was
+        // previously only wired for edit, so stations chosen while creating a
+        // location were silently dropped.
+        if (finalLocationId) {
+          processChargingPoolChanges(String(finalLocationId));
+        }
+
         if (uploadedFile && finalLocationId) {
           const renamedFileName = `${S3_BUCKET_FOLDER_IMAGES_LOCATIONS}/${finalLocationId}`;
           uploadFileViaPresignedUrl(uploadedFile, renamedFileName)
@@ -331,9 +366,6 @@ export const LocationsUpsert = ({ params, allowImageUpload = false }: LocationsU
         }
 
         replace(`/${MenuSection.LOCATIONS}/${finalLocationId}`);
-      } else if (locationId) {
-        processChargingPoolChanges(locationId);
-        back();
       }
     });
   };

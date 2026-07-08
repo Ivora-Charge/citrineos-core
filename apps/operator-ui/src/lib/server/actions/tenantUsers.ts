@@ -54,6 +54,14 @@ export async function inviteUserAction(
     if (!ALL_ROLES.includes(input.role)) {
       throw new Error(`Unknown role: ${input.role}`);
     }
+    // The username IS the email (Keycloak). Validate here so a non-email value
+    // gets a clear message instead of the raw Keycloak admin API 400 JSON
+    // ("error-invalid-email") bubbling into the UI toast.
+    const email = (input.email ?? '').trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new Error('Enter a valid email address — it becomes the user’s login.');
+    }
+    input = { ...input, email };
     if (!platform) {
       if (!callerRoles.includes('tenant-admin')) {
         throw new Error('Only platform or tenant admins can invite users');
