@@ -21,8 +21,15 @@ import KEYUTIL = jsrsasign.KEYUTIL;
 
 export const dateTimeFormat = 'YYMMDDHHmmssZ';
 
+// RFC 5280 §4.1.2.5: dates through 2049 use UTCTime (2-digit year);
+// 2050 and later must use GeneralizedTime (4-digit year) to avoid
+// year ambiguity — UTCTime "56" is interpreted as 1956, not 2056.
 export function getValidityTimeString(time: moment.Moment) {
-  return time.utc().format('YYMMDDHHmmss').concat('Z');
+  const utc = time.utc();
+  if (utc.year() >= 2050) {
+    return utc.format('YYYYMMDDHHmmss').concat('Z');
+  }
+  return utc.format('YYMMDDHHmmss').concat('Z');
 }
 
 export function createPemBlock(content: string) {

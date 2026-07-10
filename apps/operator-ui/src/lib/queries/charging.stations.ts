@@ -281,7 +281,7 @@ export const CHARGING_STATIONS_GET_QUERY = gql`
         statusNotificationId
         updatedAt
         createdAt
-        StatusNotification {
+        statusNotification: StatusNotification {
           connectorId
           connectorStatus
           createdAt

@@ -25,13 +25,19 @@ export class StatusNotificationService {
   protected _cache: ICache;
   protected _logger: Logger<ILogObj>;
 
-  constructor(
-    componentRepository: CrudRepository<Component>,
-    deviceModelRepository: IDeviceModelRepository,
-    locationRepository: ILocationRepository,
-    cache: ICache,
-    logger?: Logger<ILogObj>,
-  ) {
+  constructor({
+    componentRepository,
+    deviceModelRepository,
+    locationRepository,
+    cache,
+    logger,
+  }: {
+    componentRepository: CrudRepository<Component>;
+    deviceModelRepository: IDeviceModelRepository;
+    locationRepository: ILocationRepository;
+    cache: ICache;
+    logger?: Logger<ILogObj>;
+  }) {
     this._componentRepository = componentRepository;
     this._deviceModelRepository = deviceModelRepository;
     this._locationRepository = locationRepository;
@@ -68,6 +74,12 @@ export class StatusNotificationService {
         statusNotification,
       );
 
+      // Upstream resolves the (evse, connector) pair inline and calls
+      // createOrUpdateConnector; we keep createOrUpdateConnectorForEvse, which
+      // keys on the per-EVSE connector number, creates the Evse row when a
+      // never-seen gun reports first, and allocates the station connector
+      // serial under retry — required for two-gun Renova DC units where both
+      // guns report connectorId 1 within their own EVSE.
       const connectorValues = {
         tenantId,
         ocppConnectionName: ocppConnectionName,

@@ -10,7 +10,7 @@ services:
     pull_policy: never
     build:
       context: .
-      dockerfile: ./apps/Server/deploy.Dockerfile
+      dockerfile: ./apps/ocpp-server/deploy.Dockerfile
     # Sequelize's default pool of 5 crashes the server under ~8 concurrent
     # charging sessions (pressure test 2026-07-06: acquire-timeout storm ->
     # process death -> fleet-wide disconnect). 30 rides out fleet bursts.
@@ -26,7 +26,7 @@ services:
   # allowed roles from the citrineos-ui client roles, tenant from the tenant_id
   # user attribute. No unauthorized role => anonymous requests are rejected.
   # ($$ = compose-escaped literal $ in the JSONPath expressions.)
-  # Row-level permissions live in apps/Server/hasura-metadata (re-applied from
+  # Row-level permissions live in apps/ocpp-server/hasura-metadata (re-applied from
   # the mounted dir on every container start); derive them with
   # hasura/apply-tenancy-permissions.py.
   graphql-engine:

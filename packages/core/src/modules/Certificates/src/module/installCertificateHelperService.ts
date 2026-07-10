@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Contributors to the CitrineOS Project
 //
 // SPDX-License-Identifier: Apache-2.0
-import path from 'path';
 import {
   type CertificateDto,
   type CertificateUseEnumType,
@@ -49,16 +48,25 @@ export class InstallCertificateHelperService {
   protected fileStorage: IFileStorage;
   protected logger: Logger<ILogObj>;
 
-  constructor(
-    certificateRepository: ICertificateRepository,
-    installedCertificateRepository: IInstalledCertificateRepository,
-    installCertificateAttemptRepository: IInstallCertificateAttemptRepository,
-    deleteCertificateAttemptRepository: IDeleteCertificateAttemptRepository,
-    certificateAuthorityService: CertificateAuthorityService,
-    networkConnection: WebsocketNetworkConnection,
-    fileStorage: IFileStorage,
-    logger: Logger<ILogObj>,
-  ) {
+  constructor({
+    certificateRepository,
+    installedCertificateRepository,
+    installCertificateAttemptRepository,
+    deleteCertificateAttemptRepository,
+    certificateAuthorityService,
+    networkConnection,
+    fileStorage,
+    logger,
+  }: {
+    certificateRepository: ICertificateRepository;
+    installedCertificateRepository: IInstalledCertificateRepository;
+    installCertificateAttemptRepository: IInstallCertificateAttemptRepository;
+    deleteCertificateAttemptRepository: IDeleteCertificateAttemptRepository;
+    certificateAuthorityService: CertificateAuthorityService;
+    networkConnection: WebsocketNetworkConnection;
+    fileStorage: IFileStorage;
+    logger: Logger<ILogObj>;
+  }) {
     this.certificateRepository = certificateRepository;
     this.installedCertificateRepository = installedCertificateRepository;
     this.installCertificateAttemptRepository = installCertificateAttemptRepository;
@@ -392,30 +400,23 @@ export class InstallCertificateHelperService {
       // this makes sure the path is consist with reloading
       if (serverConfig.tlsCertificateChainFilePath) {
         await this.fileStorage.saveFile(
-          path.basename(serverConfig.tlsCertificateChainFilePath),
+          serverConfig.tlsCertificateChainFilePath,
           Buffer.from(certificateChainPem),
-          path.dirname(serverConfig.tlsCertificateChainFilePath),
         );
       }
       if (serverConfig.tlsKeyFilePath) {
-        await this.fileStorage.saveFile(
-          path.basename(serverConfig.tlsKeyFilePath),
-          Buffer.from(leafKeyPem),
-          path.dirname(serverConfig.tlsKeyFilePath),
-        );
+        await this.fileStorage.saveFile(serverConfig.tlsKeyFilePath, Buffer.from(leafKeyPem));
       }
       if (serverConfig.mtlsCertificateAuthorityKeyFilePath) {
         await this.fileStorage.saveFile(
-          path.basename(serverConfig.mtlsCertificateAuthorityKeyFilePath),
+          serverConfig.mtlsCertificateAuthorityKeyFilePath,
           Buffer.from(subCAKeyPem),
-          path.dirname(serverConfig.mtlsCertificateAuthorityKeyFilePath),
         );
       }
       if (rootCACertPem && serverConfig.rootCACertificateFilePath) {
         await this.fileStorage.saveFile(
-          path.basename(serverConfig.rootCACertificateFilePath),
+          serverConfig.rootCACertificateFilePath,
           Buffer.from(rootCACertPem),
-          path.dirname(serverConfig.rootCACertificateFilePath),
         );
       }
       this.logger.info(`Saved TLS certificate files for server ${serverConfig.id}`);

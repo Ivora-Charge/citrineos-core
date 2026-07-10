@@ -19,8 +19,8 @@ import { AggregatedMeterValuesData } from '@lib/client/pages/charging-stations/d
 import React from 'react';
 import ChargingStationConfiguration from '@lib/client/pages/charging-stations/detail/charging.station.configuration';
 import {
+  getTransactionsColumns,
   transactionChargingStationLocationNameField,
-  transactionsColumns,
   transactionStationIdField,
 } from '@lib/client/pages/transactions/columns';
 import { cardTabsStyle } from '@lib/client/styles/card';
@@ -40,7 +40,7 @@ export const ChargingStationDetailTabsCard = ({ id }: { id: number }) => {
   const translate = useTranslate();
 
   const { renderedVisibleColumns } = useColumnPreferences(
-    transactionsColumns.filter(
+    getTransactionsColumns(translate).filter(
       (tc) =>
         tc.key !== transactionStationIdField &&
         tc.key !== transactionChargingStationLocationNameField,
@@ -71,23 +71,25 @@ export const ChargingStationDetailTabsCard = ({ id }: { id: number }) => {
         >
           <TabsList>
             {advanced && (
-              <TabsTrigger value={ChargingStationDetailTabType.evses}>EVSEs</TabsTrigger>
+              <TabsTrigger value={ChargingStationDetailTabType.evses}>
+                {translate('ChargingStations.tabs.evses')}
+              </TabsTrigger>
             )}
             {advanced && (
               <TabsTrigger value={ChargingStationDetailTabType.ocppMessages}>
-                OCPP Messages
+                {translate('ChargingStations.tabs.ocppMessages')}
               </TabsTrigger>
             )}
             {advanced && (
               <TabsTrigger value={ChargingStationDetailTabType.configuration}>
-                Configuration
+                {translate('ChargingStations.tabs.configuration')}
               </TabsTrigger>
             )}
             <TabsTrigger value={ChargingStationDetailTabType.transactions}>
               {translate('Transactions.Transactions')}
             </TabsTrigger>
             <TabsTrigger value={ChargingStationDetailTabType.aggregated}>
-              Aggregated Meter Values Data
+              {translate('ChargingStations.tabs.aggregatedMeterValuesData')}
             </TabsTrigger>
           </TabsList>
 
@@ -101,7 +103,7 @@ export const ChargingStationDetailTabsCard = ({ id }: { id: number }) => {
               }}
               fallback={
                 <p className="text-muted-foreground">
-                  You don&#39;t have permission to view EVSEs.
+                  {translate('ChargingStations.tabs.noEvsesPermission')}
                 </p>
               }
             >
@@ -119,7 +121,7 @@ export const ChargingStationDetailTabsCard = ({ id }: { id: number }) => {
               }}
               fallback={
                 <p className="text-muted-foreground">
-                  You don&#39;t have permission to view OCPP logs.
+                  {translate('ChargingStations.tabs.noOcppLogsPermission')}
                 </p>
               }
             >
@@ -137,7 +139,7 @@ export const ChargingStationDetailTabsCard = ({ id }: { id: number }) => {
               }}
               fallback={
                 <p className="text-muted-foreground">
-                  You don&#39;t have permission to view station configurations.
+                  {translate('ChargingStations.tabs.noConfigurationsPermission')}
                 </p>
               }
             >

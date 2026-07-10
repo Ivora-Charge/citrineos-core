@@ -3,7 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0
 import {
   CreateBucketCommand,
+  DeleteObjectCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
+  HeadObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -90,19 +94,60 @@ export class S3Storage implements ConfigStore {
     return await S3Storage.streamToString(Body as Readable);
   }
 
-  async exists(_path: string): Promise<boolean> {
-    throw new Error('exists is not implemented for S3 storage');
+  async exists(path: string): Promise<boolean> {
+    const command = new HeadObjectCommand({
+      Bucket: this.defaultBucketName,
+      Key: path,
+    });
+    try {
+      await this.s3Client.send(command);
+      return true;
+    } catch (error: any) {
+      if (
+        error.name === 'NotFound' ||
+        error.name === 'NoSuchKey' ||
+        error.$metadata?.httpStatusCode === 404
+      ) {
+        return false;
+      }
+      this._logger.error(`Error checking existence of "${path}" in S3:`, error);
+      throw error;
+    }
   }
 
+  // S3 has no concept of directories; object keys with "/" separators are
+  // implicit, so a key can be written without first creating its prefix.
+  // This is intentionally a no-op to satisfy the IFileStorage contract.
   async createDirectory(_path: string, _options?: { recursive?: boolean }): Promise<void> {
-    throw new Error('createDirectory is not implemented for S3 storage');
+    return;
   }
 
   async deleteFile(
-    _path: string,
-    _options?: { recursive?: boolean; force?: boolean },
+    path: string,
+    options?: { recursive?: boolean; force?: boolean },
   ): Promise<void> {
-    throw new Error('deleteFile is not implemented for S3 storage');
+    try {
+      if (options?.recursive) {
+        await this.deletePrefix(path);
+      } else {
+        await this.s3Client.send(
+          new DeleteObjectCommand({
+            Bucket: this.defaultBucketName,
+            Key: path,
+          }),
+        );
+      }
+    } catch (error: any) {
+      const notFound =
+        error.name === 'NotFound' ||
+        error.name === 'NoSuchKey' ||
+        error.$metadata?.httpStatusCode === 404;
+      if (notFound && options?.force) {
+        return;
+      }
+      this._logger.error(`Error deleting "${path}" from S3:`, error);
+      throw error;
+    }
   }
 
   async fetchConfig(): Promise<SystemConfig | null> {
@@ -147,5 +192,35 @@ export class S3Storage implements ConfigStore {
       stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
       stream.on('error', reject);
     });
+  }
+
+  // Deletes every object whose key starts with the given prefix, paging through
+  // the listing in batches of up to 1000 (the S3 DeleteObjects limit).
+  private async deletePrefix(prefix: string): Promise<void> {
+    let continuationToken: string | undefined;
+    do {
+      const listed = await this.s3Client.send(
+        new ListObjectsV2Command({
+          Bucket: this.defaultBucketName,
+          Prefix: prefix,
+          ContinuationToken: continuationToken,
+        }),
+      );
+
+      const keys = (listed.Contents ?? [])
+        .map((obj) => obj.Key)
+        .filter((key): key is string => !!key);
+
+      if (keys.length > 0) {
+        await this.s3Client.send(
+          new DeleteObjectsCommand({
+            Bucket: this.defaultBucketName,
+            Delete: { Objects: keys.map((Key) => ({ Key })) },
+          }),
+        );
+      }
+
+      continuationToken = listed.IsTruncated ? listed.NextContinuationToken : undefined;
+    } while (continuationToken);
   }
 }
