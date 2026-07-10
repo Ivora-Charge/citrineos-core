@@ -7,20 +7,22 @@ import React from 'react';
 import { TRANSACTION_SUCCESS_RATE_QUERY } from '@lib/queries/transactions';
 import { ActionType, ResourceType } from '@lib/utils/access.types';
 import { AccessDeniedFallbackCard } from '@lib/client/components/access-denied-fallback-card';
-import { CanAccess, useCustom, useTranslate } from '@refinedev/core';
+import { CanAccess, useTranslate } from '@refinedev/core';
+import { useGqlCustom } from '@lib/utils/use-gql-custom';
+import { useTenantId } from '@lib/client/hooks/useTenantId';
 import { Card, CardContent, CardHeader } from '@lib/client/components/ui/card';
 import { heading2Style } from '@lib/client/styles/page';
 import { OverviewCardSkeleton } from '@lib/client/pages/overview/overview.card.skeleton';
 
 export const PluginSuccessRateCard = () => {
   const translate = useTranslate();
+  const tenantId = useTenantId();
 
   const {
     query: { data, isLoading, error },
-  } = useCustom({
-    meta: {
-      gqlQuery: TRANSACTION_SUCCESS_RATE_QUERY,
-    },
+  } = useGqlCustom({
+    gqlQuery: TRANSACTION_SUCCESS_RATE_QUERY,
+    variables: { tenantId },
   } as any);
 
   const successCount = data?.data?.success?.aggregate?.count || 0;

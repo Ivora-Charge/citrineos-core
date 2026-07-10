@@ -254,13 +254,15 @@ export const GET_TRANSACTION_LIST_FOR_STATION = gql`
 
 // TODO when possible, include the total time as well
 export const TRANSACTION_SUCCESS_RATE_QUERY = gql`
-  query TransactionsSuccessRate {
-    success: Transactions_aggregate(where: { totalKwh: { _gt: 0 } }) {
+  query TransactionsSuccessRate($tenantId: Int!) {
+    success: Transactions_aggregate(
+      where: { totalKwh: { _gt: 0 }, tenantId: { _eq: $tenantId } }
+    ) {
       aggregate {
         count
       }
     }
-    total: Transactions_aggregate {
+    total: Transactions_aggregate(where: { tenantId: { _eq: $tenantId } }) {
       aggregate {
         count
       }

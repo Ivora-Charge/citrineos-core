@@ -332,7 +332,12 @@ export async function moveToInventoryAction(
     }
 
     const invId = await inventoryTenantId();
-    await hasuraAdmin(MOVE_STATION, { stationId: station.id, tenantId: invId, locationId: null });
+    await hasuraAdmin(MOVE_STATION, {
+      stationId: station.id,
+      stationName: station.ocppConnectionName,
+      tenantId: invId,
+      locationId: null,
+    });
     await reassignPaymentStation(station.ocppConnectionName, invId);
     await dropStationConnection(station.ocppConnectionName, station.tenantId);
 

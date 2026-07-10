@@ -15,6 +15,7 @@ import { LatestStatusNotificationClass } from '@lib/cls/latest.status.notificati
 import { GET_CHARGING_STATIONS_WITH_LOCATION_AND_LATEST_STATUS_NOTIFICATIONS_AND_TRANSACTIONS } from '@lib/queries/charging.stations';
 import { ActionType, ResourceType } from '@lib/utils/access.types';
 import { useGqlCustom } from '@lib/utils/use-gql-custom';
+import { useTenantId } from '@lib/client/hooks/useTenantId';
 import { CanAccess, useTranslate } from '@refinedev/core';
 import { plainToInstance } from 'class-transformer';
 import { Card, CardContent, CardHeader } from '@lib/client/components/ui/card';
@@ -184,10 +185,12 @@ export const ChargerActivityCard: React.FC = () => {
   const [stationsSheetOpen, setStationsSheetOpen] = useState(false);
   const translate = useTranslate();
 
+  const tenantId = useTenantId();
   const {
     query: { data, isLoading, error },
   } = useGqlCustom({
     gqlQuery: GET_CHARGING_STATIONS_WITH_LOCATION_AND_LATEST_STATUS_NOTIFICATIONS_AND_TRANSACTIONS,
+    variables: { tenantId },
   });
 
   const stations: ChargingStationDto[] = data?.data.ChargingStations || [];

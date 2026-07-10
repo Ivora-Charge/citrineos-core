@@ -37,7 +37,10 @@ export const useGqlCustom = <T extends BaseRecord>({ gqlQuery, variables }: UseG
     meta: {
       operation,
       gqlQuery,
-      variables,
+      // The @refinedev/hasura custom() method sends meta.gqlVariables with
+      // the request; a plain `variables` key is silently dropped (queries
+      // with non-nullable variables then fail Hasura validation).
+      gqlVariables: variables,
     },
   });
 };

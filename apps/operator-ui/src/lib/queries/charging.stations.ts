@@ -188,14 +188,19 @@ export const FAULTED_CHARGING_STATIONS_LIST_QUERY = gql`
 `;
 
 export const CHARGING_STATIONS_STATUS_COUNT_QUERY = gql`
-  query ChargingStationsCount {
-    online: ChargingStations_aggregate(where: { isOnline: { _eq: true } }) {
+  query ChargingStationsCount($tenantId: Int!) {
+    online: ChargingStations_aggregate(
+      where: { isOnline: { _eq: true }, tenantId: { _eq: $tenantId } }
+    ) {
       aggregate {
         count
       }
     }
     offline: ChargingStations_aggregate(
-      where: { _or: [{ isOnline: { _eq: false } }, { isOnline: { _is_null: true } }] }
+      where: {
+        tenantId: { _eq: $tenantId }
+        _or: [{ isOnline: { _eq: false } }, { isOnline: { _is_null: true } }]
+      }
     ) {
       aggregate {
         count
@@ -332,8 +337,10 @@ export const CHARGING_STATIONS_GET_QUERY = gql`
 `;
 
 export const GET_CHARGING_STATIONS_WITH_LOCATION_AND_LATEST_STATUS_NOTIFICATIONS_AND_TRANSACTIONS = gql`
-  query GetChargingStationsWithLocationAndLatestStatusNotificationsAndTransactions {
-    ChargingStations {
+  query GetChargingStationsWithLocationAndLatestStatusNotificationsAndTransactions(
+    $tenantId: Int!
+  ) {
+    ChargingStations(where: { tenantId: { _eq: $tenantId } }) {
       id
       ocppConnectionName
       isOnline

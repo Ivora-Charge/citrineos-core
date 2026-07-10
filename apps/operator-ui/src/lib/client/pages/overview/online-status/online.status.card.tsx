@@ -10,7 +10,9 @@ import { Circle } from '@lib/client/pages/overview/circle/circle';
 import { CHARGING_STATIONS_STATUS_COUNT_QUERY } from '@lib/queries/charging.stations';
 import { ActionType, ResourceType } from '@lib/utils/access.types';
 import { AccessDeniedFallbackCard } from '@lib/client/components/access-denied-fallback-card';
-import { CanAccess, useCustom, useTranslate } from '@refinedev/core';
+import { CanAccess, useTranslate } from '@refinedev/core';
+import { useGqlCustom } from '@lib/utils/use-gql-custom';
+import { useTenantId } from '@lib/client/hooks/useTenantId';
 import { ChevronRightIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { heading2Style } from '@lib/client/styles/page';
@@ -26,12 +28,12 @@ export const OnlineStatusCard = () => {
   const { push } = useRouter();
   const translate = useTranslate();
 
+  const tenantId = useTenantId();
   const {
     query: { data, isLoading, error },
-  } = useCustom({
-    meta: {
-      gqlQuery: CHARGING_STATIONS_STATUS_COUNT_QUERY,
-    },
+  } = useGqlCustom({
+    gqlQuery: CHARGING_STATIONS_STATUS_COUNT_QUERY,
+    variables: { tenantId },
   } as any);
 
   const onlineCount = data?.data?.online?.aggregate?.count || 0;
