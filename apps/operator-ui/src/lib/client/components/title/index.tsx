@@ -5,54 +5,39 @@
 import config from '@lib/utils/config';
 import { motion } from 'framer-motion';
 import React from 'react';
-import { useTheme } from 'next-themes';
 import Image from 'next/image';
 
 export interface LogoProps {
   collapsed?: boolean;
 }
 
-const LOGO_URL = config.logoUrl;
+// Ivora Charge lockup: elephant mark + serif wordmark, matching
+// ivoracharge.com and the driver payment page (frontend/src/components/Logo.js).
+const serifStack =
+  "'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif";
 
 export const Logo: React.FC<LogoProps> = (props: LogoProps) => {
   const { collapsed = false } = props;
-  const { theme } = useTheme();
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-      <motion.img
-        src={LOGO_URL}
-        alt="Collapsed Logo"
-        initial={{ scale: 0.2, opacity: 0, x: -10, left: 0 }}
-        animate={{
-          scale: collapsed ? 0.5 : 0.2,
-          opacity: collapsed ? 1 : 0,
-          x: collapsed ? '-50%' : -10,
-          left: collapsed ? '50%' : 0,
-        }}
-        style={{
-          position: 'absolute',
-          height: '100%',
-        }}
+    <div className="flex h-full w-full items-center justify-center gap-2.5">
+      <Image
+        src="/ivora-mark.png"
+        alt={`${config.appName} Logo`}
+        width={collapsed ? 40 : 36}
+        height={collapsed ? 40 : 36}
+        priority
       />
       {!collapsed && (
-        <div
-          style={{
-            position: 'relative',
-            width: '80%',
-            height: '60%',
-            margin: '0 auto',
-          }}
+        <motion.span
+          initial={{ opacity: 0, x: -6 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="whitespace-nowrap text-xl font-semibold leading-none text-foreground"
+          style={{ fontFamily: serifStack, letterSpacing: '-0.01em' }}
         >
-          <Image
-            src={theme === 'light' ? '/logo-black.svg' : '/logo-white.svg'}
-            alt={`${config.appName} Logo`}
-            fill
-            style={{
-              objectFit: 'contain',
-            }}
-          />
-        </div>
+          Ivora
+          <span className="ml-1.5 font-normal text-muted-foreground">Charge</span>
+        </motion.span>
       )}
     </div>
   );

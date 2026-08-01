@@ -107,6 +107,8 @@ export async function chargingStatsAction(
     const res = await fetch(`${baseUrl.replace(/\/$/, '')}/api/stats/revenue${qs}`, {
       headers: { 'X-Catalog-Sync-Secret': secret },
       cache: 'no-store',
+      // An unreachable payment service must fail the card, not hang the page.
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) {
       throw new Error(`Payment stats: HTTP ${res.status}`);

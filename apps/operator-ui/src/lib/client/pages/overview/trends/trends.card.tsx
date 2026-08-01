@@ -4,15 +4,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Card, CardContent, CardHeader } from '@lib/client/components/ui/card';
 import { useTenantId } from '@lib/client/hooks/useTenantId';
 import {
@@ -23,10 +15,10 @@ import {
 
 // Three small multiples over the same 30-day axis instead of one multi-scale
 // chart: sessions, energy and money have incomparable units, and a dual axis
-// misleads. One series per panel (hue = the panel's identity, fixed slots
-// --chart-1..3 from the validated dashboard palette); the panel title names
-// the series, values surface via hover tooltip + a direct label on the peak
-// day (the tooltip/label pair is the contrast relief for the lighter hues).
+// misleads. Panels sit side by side (stat-plus-sparkline), each led by its
+// 30-day total; per-day values surface via the hover tooltip. One series per
+// panel, hue = the panel's identity (fixed slots --chart-1..3 from the
+// validated dashboard palette).
 
 const shortDay = (day: string) => {
   const d = new Date(`${day}T00:00:00Z`);
@@ -71,46 +63,22 @@ const PanelTooltip = ({
   );
 };
 
-const TrendPanel = ({
-  data,
-  spec,
-  showXAxis,
-}: {
-  data: DailyBucket[];
-  spec: PanelSpec;
-  showXAxis: boolean;
-}) => {
+const TrendPanel = ({ data, spec }: { data: DailyBucket[]; spec: PanelSpec }) => {
   const values = data.map((d) => Number(d[spec.dataKey] ?? 0));
-  const max = Math.max(...values);
-  const maxIndex = values.indexOf(max);
-
-  // Direct label only on the peak day (selective, not every bar), and only
-  // when there is any data at all.
-  const peakLabel = ({ x, y, width, index, value }: any) =>
-    max > 0 && index === maxIndex && value === max ? (
-      <text
-        x={x + width / 2}
-        y={y - 4}
-        textAnchor="middle"
-        className="fill-muted-foreground"
-        fontSize={10}
-      >
-        {spec.format(value)}
-      </text>
-    ) : null;
+  const max = Math.max(0, ...values);
+  const total = values.reduce((a, b) => a + b, 0);
 
   return (
     <div>
-      <p className="text-xs text-muted-foreground mb-1">{spec.title}</p>
-      <ResponsiveContainer width="100%" height={96}>
-        <BarChart data={data} margin={{ top: 12, right: 4, left: 4, bottom: 0 }} barCategoryGap={2}>
-          <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="2 4" />
+      <p className="text-xs text-muted-foreground">{spec.title}</p>
+      <p className="text-lg font-semibold tabular-nums mb-1">{spec.format(total)}</p>
+      <ResponsiveContainer width="100%" height={64}>
+        <BarChart data={data} margin={{ top: 2, right: 2, left: 2, bottom: 0 }} barCategoryGap={2}>
           <XAxis
             dataKey="day"
-            hide={!showXAxis}
             tickFormatter={shortDay}
-            ticks={data.filter((_, i) => i % 7 === 1).map((d) => d.day)}
-            tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }}
+            ticks={data.filter((_, i) => i % 14 === 1).map((d) => d.day)}
+            tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }}
             axisLine={{ stroke: 'var(--border)' }}
             tickLine={false}
           />
@@ -122,9 +90,9 @@ const TrendPanel = ({
           <Bar
             dataKey={spec.dataKey}
             fill={spec.color}
-            radius={[4, 4, 0, 0]}
-            maxBarSize={14}
-            label={peakLabel}
+            fillOpacity={0.9}
+            radius={[2, 2, 0, 0]}
+            maxBarSize={10}
             isAnimationActive={false}
           />
         </BarChart>
@@ -151,19 +119,19 @@ export const TrendsCard = () => {
     const currency = stats?.dailyCurrency ?? 'USD';
     return [
       {
-        title: 'Sessions / day',
+        title: 'Sessions',
         dataKey: 'sessions',
         color: 'var(--chart-1)',
         format: (v) => `${v}`,
       },
       {
-        title: 'Energy delivered (kWh) / day',
+        title: 'Energy delivered',
         dataKey: 'kwh',
         color: 'var(--chart-2)',
         format: (v) => `${v.toFixed(1)} kWh`,
       },
       {
-        title: 'Revenue captured / day',
+        title: 'Revenue captured',
         dataKey: 'revenue_subunits',
         color: 'var(--chart-3)',
         format: (v) => money(v, currency),
@@ -187,14 +155,9 @@ export const TrendsCard = () => {
         ) : !stats ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : (
-          <div className="flex flex-col gap-2">
-            {panels.map((spec, i) => (
-              <TrendPanel
-                key={spec.title}
-                data={daily}
-                spec={spec}
-                showXAxis={i === panels.length - 1}
-              />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
+            {panels.map((spec) => (
+              <TrendPanel key={spec.title} data={daily} spec={spec} />
             ))}
           </div>
         )}

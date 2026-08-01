@@ -426,7 +426,7 @@
       "editConfiguration": "Editar Configuração"
     },
     "connectionModal": {
-      "welcomeTitle": "Bem-vindo à Operator UI do CitrineOS",
+      "welcomeTitle": "Bem-vindo ao painel do operador da Ivora Charge",
       "connectionTitle": "Conexão da Estação de Recarga",
       "welcomeDescription": "Assista a este vídeo rápido de introdução para aprender como conectar estações de recarga. Você pode acessar estas informações a qualquer momento clicando no botão Ajuda.",
       "connectionDescription": "Use as seguintes URLs de websocket específicas do tenant para conectar-se ao servidor. A conexão pode ser atualizada de Sem Autenticação até o Perfil de Segurança 3, uma de cada vez.",
@@ -435,7 +435,7 @@
       "gettingStartedVideo": "Vídeo de Introdução",
       "videoNotSupported": "Seu navegador não suporta a tag de vídeo.",
       "noVideoAvailable": "Nenhum vídeo disponível",
-      "videoDescription": "Este vídeo demonstra como conectar estações de recarga à plataforma CitrineOS.",
+      "videoDescription": "Este vídeo demonstra como conectar estações de recarga à plataforma Ivora Charge.",
       "quickSteps": "Passos Rápidos",
       "step1": "Configure sua estação de recarga com a URL de websocket apropriada",
       "step2": "Escolha o perfil de segurança que corresponde à sua configuração",

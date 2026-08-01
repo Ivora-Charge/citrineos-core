@@ -104,9 +104,11 @@ const defaultValues: OnboardingForm = {
   ...tariffDefaults,
 };
 
-// Field groups validated before advancing each step.
+// Field groups validated before advancing each step. Stripe comes before the
+// business step so its public profile can prefill the business fields.
 const STEP_FIELDS: (keyof OnboardingForm)[][] = [
   ['name', 'countryCode', 'partyId', 'url'],
+  ['stripeAccountId'],
   [
     'businessName',
     'businessAddress',
@@ -117,16 +119,23 @@ const STEP_FIELDS: (keyof OnboardingForm)[][] = [
     'businessContactEmail',
     'businessContactPhone',
   ],
-  ['stripeAccountId'],
   [], // claim chargers -- optional, nothing to validate
-  ['currency', 'priceKwh', 'priceMinute', 'priceSession', 'authorizationAmount', 'taxRate', 'paymentFee'],
+  [
+    'currency',
+    'priceKwh',
+    'priceMinute',
+    'priceSession',
+    'authorizationAmount',
+    'taxRate',
+    'paymentFee',
+  ],
   [],
 ];
 
 const STEP_TITLES = [
   'Tenant profile',
-  'Business information',
   'Connect Stripe',
+  'Business information',
   'Claim chargers',
   'Default tariff',
   'Review & complete',
@@ -257,6 +266,38 @@ export const OnboardingWizard = () => {
     resolver: zodResolver(OnboardingSchema),
   });
 
+  // Prefill business fields from the Stripe account's public profile so the
+  // tenant doesn't re-type what Stripe already collected. Fill-if-empty only
+  // (a saved tenant record or the user's own edits always win), and re-run
+  // once the tenant record has loaded: refine resets the form when the query
+  // resolves, which would clobber values applied too early.
+  const connectProfile = connectStatus?.profile;
+  const formLoading = form.refineCore.formLoading;
+  React.useEffect(() => {
+    if (!connectProfile || formLoading) return;
+    const fill = (name: keyof OnboardingForm, value?: string | null) => {
+      if (value && !form.getValues(name)) {
+        form.setValue(name, value, { shouldDirty: true });
+      }
+    };
+    fill('businessName', connectProfile.business_name);
+    fill(
+      'businessAddress',
+      [connectProfile.address_line1, connectProfile.address_line2].filter(Boolean).join(', '),
+    );
+    fill('businessPostalCode', connectProfile.address_postal_code);
+    fill('businessCity', connectProfile.address_city);
+    fill('businessState', connectProfile.address_state);
+    fill('businessCountry', connectProfile.address_country || connectProfile.country);
+    fill('businessContactEmail', connectProfile.support_email || connectProfile.email);
+    fill('businessContactPhone', connectProfile.support_phone);
+    fill('url', connectProfile.url);
+    if (connectProfile.default_currency && form.getValues('currency') === tariffDefaults.currency) {
+      form.setValue('currency', connectProfile.default_currency);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connectProfile, formLoading]);
+
   // All EVSEs across the tenant's charging stations -> payment sync entries.
   const {
     query: { data: stationsData },
@@ -268,25 +309,27 @@ export const OnboardingWizard = () => {
 
   const evses: StationEvseInput[] = useMemo(() => {
     const stations = stationsData?.data ?? [];
-    return stations.flatMap((s: any) => {
-      // Connector.evseId is the Evse table id; map each Evse to the Tariff on its
-      // connector so the sync uses the EVSE's configured tariff rather than the
-      // flat default pricing.
-      const tariffByEvseDbId = new Map<number, any>();
-      for (const c of s.connectors ?? []) {
-        if (c?.evseId != null && c.Tariff) {
-          tariffByEvseDbId.set(Number(c.evseId), c.Tariff);
+    return stations
+      .flatMap((s: any) => {
+        // Connector.evseId is the Evse table id; map each Evse to the Tariff on its
+        // connector so the sync uses the EVSE's configured tariff rather than the
+        // flat default pricing.
+        const tariffByEvseDbId = new Map<number, any>();
+        for (const c of s.connectors ?? []) {
+          if (c?.evseId != null && c.Tariff) {
+            tariffByEvseDbId.set(Number(c.evseId), c.Tariff);
+          }
         }
-      }
-      return (s.evses ?? []).map((e: any) => ({
-        ocppConnectionName: s.ocppConnectionName as string,
-        // CitrineOS stores the OCPP evse number in evseTypeId; the evseId column
-        // is often null. evseTypeId is what maps to payment ocpp_evse_id and the
-        // seed convention "{station}-{evseTypeId}".
-        evseId: Number(e.evseTypeId ?? e.evseId),
-        tariff: normalizeConnectorTariff(tariffByEvseDbId.get(Number(e.id))),
-      }));
-    }).filter((e: StationEvseInput) => Number.isFinite(e.evseId));
+        return (s.evses ?? []).map((e: any) => ({
+          ocppConnectionName: s.ocppConnectionName as string,
+          // CitrineOS stores the OCPP evse number in evseTypeId; the evseId column
+          // is often null. evseTypeId is what maps to payment ocpp_evse_id and the
+          // seed convention "{station}-{evseTypeId}".
+          evseId: Number(e.evseTypeId ?? e.evseId),
+          tariff: normalizeConnectorTariff(tariffByEvseDbId.get(Number(e.id))),
+        }));
+      })
+      .filter((e: StationEvseInput) => Number.isFinite(e.evseId));
   }, [stationsData]);
 
   const next = async () => {
@@ -431,54 +474,61 @@ export const OnboardingWizard = () => {
                 </div>
               )}
 
-              {step === 1 && (
-                <div className={cardGridStyle}>
-                  <FormField
-                    control={form.control}
-                    label="Legal / display name"
-                    name="businessName"
-                    required
-                  >
-                    <Input />
-                  </FormField>
-                  <FormField
-                    control={form.control}
-                    label="Street address"
-                    name="businessAddress"
-                    required
-                  >
-                    <Input />
-                  </FormField>
-                  <FormField control={form.control} label="Postal code" name="businessPostalCode">
-                    <Input />
-                  </FormField>
-                  <FormField control={form.control} label="City" name="businessCity">
-                    <Input />
-                  </FormField>
-                  <FormField control={form.control} label="State / Province" name="businessState">
-                    <Input />
-                  </FormField>
-                  <FormField control={form.control} label="Country" name="businessCountry">
-                    <Input placeholder="e.g. USA" />
-                  </FormField>
-                  <FormField
-                    control={form.control}
-                    label="Contact email"
-                    name="businessContactEmail"
-                  >
-                    <Input type="email" />
-                  </FormField>
-                  <FormField
-                    control={form.control}
-                    label="Contact phone"
-                    name="businessContactPhone"
-                  >
-                    <Input />
-                  </FormField>
+              {step === 2 && (
+                <div className="flex flex-col gap-4">
+                  <p className="text-sm text-muted-foreground">
+                    Prefilled from your Stripe account where available — please confirm or correct.
+                    The address is shown to drivers as the charging site location, so change it if
+                    your chargers aren&apos;t at your business address.
+                  </p>
+                  <div className={cardGridStyle}>
+                    <FormField
+                      control={form.control}
+                      label="Legal / display name"
+                      name="businessName"
+                      required
+                    >
+                      <Input />
+                    </FormField>
+                    <FormField
+                      control={form.control}
+                      label="Street address"
+                      name="businessAddress"
+                      required
+                    >
+                      <Input />
+                    </FormField>
+                    <FormField control={form.control} label="Postal code" name="businessPostalCode">
+                      <Input />
+                    </FormField>
+                    <FormField control={form.control} label="City" name="businessCity">
+                      <Input />
+                    </FormField>
+                    <FormField control={form.control} label="State / Province" name="businessState">
+                      <Input />
+                    </FormField>
+                    <FormField control={form.control} label="Country" name="businessCountry">
+                      <Input placeholder="e.g. USA" />
+                    </FormField>
+                    <FormField
+                      control={form.control}
+                      label="Contact email"
+                      name="businessContactEmail"
+                    >
+                      <Input type="email" />
+                    </FormField>
+                    <FormField
+                      control={form.control}
+                      label="Contact phone"
+                      name="businessContactPhone"
+                    >
+                      <Input />
+                    </FormField>
+                  </div>
                 </div>
               )}
 
-              {step === 2 && (
+              {step === 1 && (
                 <div className="flex flex-col gap-4 max-w-xl">
                   <div className="flex items-center gap-3">
                     <Button
@@ -496,8 +546,10 @@ export const OnboardingWizard = () => {
                         {connectStatus.charges_enabled
                           ? '✓ Stripe account active — payments enabled'
                           : (connectStatus.requirements_due?.length ?? 0) > 0
-                            ? `Action needed in Stripe: ${connectStatus.requirements_due!
-                                .map((r) => r.split('.').pop()?.replace(/_/g, ' '))
+                            ? `Action needed in Stripe: ${connectStatus
+                                .requirements_due!.map((r) =>
+                                  r.split('.').pop()?.replace(/_/g, ' '),
+                                )
                                 .join(', ')}`
                             : connectStatus.details_submitted
                               ? 'Details submitted — Stripe is reviewing'
@@ -509,8 +561,8 @@ export const OnboardingWizard = () => {
                   </div>
                   <p className="text-sm text-muted-foreground">
                     Stripe walks you through identity and payout details; you&apos;ll return here
-                    afterwards. You can keep going with the rest of the setup while Stripe
-                    finishes — payments switch on the moment the account is active.
+                    afterwards. You can keep going with the rest of the setup while Stripe finishes
+                    — payments switch on the moment the account is active.
                   </p>
                   <FormField
                     control={form.control}
@@ -526,8 +578,8 @@ export const OnboardingWizard = () => {
               {step === 3 && (
                 <div className="flex flex-col gap-4 max-w-xl">
                   <p className="text-sm text-muted-foreground">
-                    Claim the chargers you purchased by the serial number printed on each unit.
-                    You can also do this later from the Charging Stations page.
+                    Claim the chargers you purchased by the serial number printed on each unit. You
+                    can also do this later from the Charging Stations page.
                   </p>
                   <div className="flex items-center gap-2">
                     <Input
@@ -634,10 +686,16 @@ const Row = ({ label, value }: { label: string; value: React.ReactNode }) => (
 const ReviewStep = ({ values, evseCount }: { values: OnboardingForm; evseCount: number }) => (
   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1 max-w-3xl">
     <Row label="Tenant name" value={values.name} />
-    <Row label="Country / Party" value={`${values.countryCode || '—'} / ${values.partyId || '—'}`} />
+    <Row
+      label="Country / Party"
+      value={`${values.countryCode || '—'} / ${values.partyId || '—'}`}
+    />
     <Row label="Business name" value={values.businessName} />
     <Row label="Address" value={values.businessAddress} />
-    <Row label="City / Postal" value={`${values.businessCity || '—'} ${values.businessPostalCode || ''}`} />
+    <Row
+      label="City / Postal"
+      value={`${values.businessCity || '—'} ${values.businessPostalCode || ''}`}
+    />
     <Row label="Contact" value={values.businessContactEmail} />
     <Row label="Stripe account" value={values.stripeAccountId} />
     <Row label="Currency" value={values.currency?.toUpperCase()} />

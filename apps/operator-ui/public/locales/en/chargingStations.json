@@ -426,7 +426,7 @@
       "editConfiguration": "Edit Configuration"
     },
     "connectionModal": {
-      "welcomeTitle": "Welcome to CitrineOS Operator UI",
+      "welcomeTitle": "Welcome to the Ivora Charge Operator Dashboard",
       "connectionTitle": "Charging Station Connection",
       "welcomeDescription": "Watch this quick introduction video to learn how to connect charging stations. You can access this information anytime by clicking the Help button.",
       "connectionDescription": "Use the following tenant-specific websocket URLs to connect to the server. The connection can be upgraded from No Authentication to Security Profile 3 one by one.",
@@ -435,7 +435,7 @@
       "gettingStartedVideo": "Getting Started Video",
       "videoNotSupported": "Your browser does not support the video tag.",
       "noVideoAvailable": "No video available",
-      "videoDescription": "This video demonstrates how to connect charging stations to the CitrineOS platform.",
+      "videoDescription": "This video demonstrates how to connect charging stations to the Ivora Charge platform.",
       "quickSteps": "Quick Steps",
       "step1": "Configure your charging station with the appropriate websocket URL",
       "step2": "Choose the security profile that matches your setup",

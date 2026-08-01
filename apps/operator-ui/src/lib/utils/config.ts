@@ -47,7 +47,7 @@ const getConfig: () => {
   const authProvider = authProviderResult.success ? authProviderResult.data : 'generic';
 
   return {
-    appName: process.env.NEXT_PUBLIC_APP_NAME || 'CitrineOS',
+    appName: process.env.NEXT_PUBLIC_APP_NAME || 'Ivora Charge',
     bannerMessage: process.env.NEXT_PUBLIC_BANNER_MESSAGE,
     googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || 'YOUR_GOOGLE_MAPS_API_KEY',
     googleMapsAddressApiKey:

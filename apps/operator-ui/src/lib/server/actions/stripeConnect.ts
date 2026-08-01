@@ -12,12 +12,32 @@ import { audit } from '@lib/server/audit';
 // service-to-service /api/connect endpoints with the shared secret and
 // enforce that a tenant user can only onboard their own tenant.
 
+// Public-profile fields of the connected account (business_profile is all a
+// platform can read on a Standard account, and every field in it is optional
+// in Stripe onboarding) -- used to prefill the business-information step.
+export interface ConnectProfile {
+  business_name?: string | null;
+  url?: string | null;
+  support_email?: string | null;
+  support_phone?: string | null;
+  address_line1?: string | null;
+  address_line2?: string | null;
+  address_city?: string | null;
+  address_state?: string | null;
+  address_postal_code?: string | null;
+  address_country?: string | null;
+  email?: string | null;
+  country?: string | null;
+  default_currency?: string | null;
+}
+
 export interface ConnectStatus {
   stripe_account_id?: string | null;
   charges_enabled: boolean;
   details_submitted: boolean;
   disabled_reason?: string | null;
   requirements_due?: string[];
+  profile?: ConnectProfile | null;
 }
 
 const isPlatformAdmin = (roles: string[]) =>

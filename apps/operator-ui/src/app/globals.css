@@ -54,26 +54,28 @@
   --chart-1: #2a78d6;
   --chart-2: #1baf7a;
   --chart-3: #eda100;
-  --background: oklch(1 0 0);
-  --foreground: #131211;
-  --card: oklch(1 0 0);
-  --card-foreground: #131211;
-  --popover: oklch(1 0 0);
-  --popover-foreground: #131211;
-  --primary: #ffae0b;
-  --primary-foreground: #6e4900;
-  --secondary: #a5b2ff;
-  --secondary-foreground: #000d37;
-  --muted: #e7e6e4;
-  --muted-foreground: #32302e;
-  --accent: hsl(40, 5.88%, 95%);
-  --accent-foreground: #6e87ff;
-  --destructive: #f61631;
-  --success: #3db014;
-  --warning: #ff7300;
-  --border: #e7e6e4;
-  --input: #c3bdb9;
-  --ring: #9c9793;
+  /* Ivora Charge, dashboard-tuned: neutral near-white surfaces, ink text,
+     forest-green (#2d6a4f) as the single brand accent */
+  --background: #f8f8f7;
+  --foreground: #1a1917;
+  --card: #ffffff;
+  --card-foreground: #1a1917;
+  --popover: #ffffff;
+  --popover-foreground: #1a1917;
+  --primary: #2d6a4f;
+  --primary-foreground: #ffffff;
+  --secondary: #e8ece9;
+  --secondary-foreground: #24382f;
+  --muted: #f0efec;
+  --muted-foreground: #6b6862;
+  --accent: #eef2ef;
+  --accent-foreground: #1e5039;
+  --destructive: #b42318;
+  --success: #1a7f37;
+  --warning: #b54708;
+  --border: #e4e2de;
+  --input: #d3d0ca;
+  --ring: #2d6a4f;
 }
 
 [data-theme='dark'] {
@@ -82,26 +84,27 @@
   --chart-1: #3987e5;
   --chart-2: #199e70;
   --chart-3: #c98500;
-  --background: #16151e;
-  --foreground: #f0f0f0;
-  --card: #23242e;
-  --card-foreground: #f0f0f0;
-  --popover: #23242e;
-  --popover-foreground: #f0f0f0;
-  --primary: hsl(40.08, 100%, 60%);
-  --primary-foreground: #6e4900;
-  --secondary: #d7dcff;
-  --secondary-foreground: #00226e;
-  --muted: #32302e;
-  --muted-foreground: #c3bdb9;
-  --accent: hsl(234.55, 13.58%, 25%);
-  --accent-foreground: #a5b2ff;
-  --destructive: hsl(352.77, 92.56%, 60%);
-  --success: hsl(104.23, 79.59%, 40%);
-  --warning: #ffa45a;
-  --border: hsl(234.55, 13.58%, 30%);
-  --input: hsl(234.55, 13.58%, 35%);
-  --ring: hsl(234.55, 13.58%, 30%);
+  /* Neutral charcoal dark surfaces, desaturated green accent */
+  --background: #141413;
+  --foreground: #ececea;
+  --card: #1e1e1c;
+  --card-foreground: #ececea;
+  --popover: #1e1e1c;
+  --popover-foreground: #ececea;
+  --primary: #6fbf94;
+  --primary-foreground: #0f2a1d;
+  --secondary: #2e332f;
+  --secondary-foreground: #d3ded6;
+  --muted: #262624;
+  --muted-foreground: #a8a5a0;
+  --accent: #232823;
+  --accent-foreground: #8fc7a8;
+  --destructive: #e5484d;
+  --success: #46a758;
+  --warning: #e79008;
+  --border: #2e2e2b;
+  --input: #3a3a36;
+  --ring: #6fbf94;
 }
 
 @layer base {

@@ -52,7 +52,7 @@ const roobertFont = localFont({
 export const metadata: Metadata = {
   title: config.appName,
   icons: {
-    icon: '/Citrine_Favicon_256_clear3.png',
+    icon: '/ivora-icon.png',
   },
 };
 
