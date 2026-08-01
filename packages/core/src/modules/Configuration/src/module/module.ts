@@ -752,6 +752,63 @@ export class ConfigurationModule extends AbstractModule {
    * Handle OCPP 1.6 requests
    */
 
+  // RCD/HengTong AC firmware (V72.78) renders its wall clock straight from
+  // the OCPP currentTime RTC sync: it stores the vendor zone_offset_req
+  // (result 0) but never applies it to the display (verified across warm
+  // and cold boots, 2026-08-01). The only way to show local time on these
+  // units is to answer their Boot/Heartbeat with LOCAL wall time. This is a
+  // deliberate protocol violation scoped to RCD-vendor 1.6 stations: their
+  // charger-stamped timestamps (StatusNotification, StartTransaction, ...)
+  // arrive shifted by the zone offset. Durations stay correct (both ends
+  // shift equally); absolute times in Transactions/OCPPMessages are local-
+  // labeled-Z for these stations. OPT-IN: set OCPP16_RCD_LOCAL_TIME_TZ to
+  // an IANA zone name to enable; unset => honest UTC for everyone (chosen
+  // default 2026-08-01 -- display timezone is being pursued with RCD
+  // instead, so transaction timestamps stay clean).
+  private _ocpp16LocalTimeVendorCache = new Map<string, boolean>();
+
+  protected static _ocpp16LocalTimeZone(): string | null {
+    const tz = process.env.OCPP16_RCD_LOCAL_TIME_TZ ?? '';
+    return tz && tz !== 'off' ? tz : null;
+  }
+
+  protected static _localWallTimeAsIso(tz: string): string {
+    const now = new Date();
+    try {
+      const atTz = new Date(now.toLocaleString('en-US', { timeZone: tz }));
+      const atUtc = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' }));
+      return new Date(now.getTime() + atTz.getTime() - atUtc.getTime()).toISOString();
+    } catch {
+      return now.toISOString();
+    }
+  }
+
+  protected async _ocpp16CurrentTime(tenantId: number, stationId: string): Promise<string> {
+    const tz = ConfigurationModule._ocpp16LocalTimeZone();
+    if (!tz) {
+      return new Date().toISOString();
+    }
+    const key = `${tenantId}:${stationId}`;
+    let isRcd = this._ocpp16LocalTimeVendorCache.get(key);
+    if (isRcd === undefined) {
+      try {
+        const station = await this._locationRepository.readChargingStationByStationId(
+          tenantId,
+          stationId,
+        );
+        if (!station) {
+          return new Date().toISOString(); // not booted yet; don't cache
+        }
+        const vendor = (station.chargePointVendor ?? '').toUpperCase();
+        isRcd = vendor === 'RCD' || vendor === 'RENOVA';
+        this._ocpp16LocalTimeVendorCache.set(key, isRcd);
+      } catch {
+        return new Date().toISOString();
+      }
+    }
+    return isRcd ? ConfigurationModule._localWallTimeAsIso(tz) : new Date().toISOString();
+  }
+
   @AsHandler([OCPPVersion.OCPP1_6], OCPP_CallAction.Heartbeat)
   protected async _handle16Heartbeat(
     message: IMessage<OCPP1_6.HeartbeatRequest>,
@@ -760,7 +817,10 @@ export class ConfigurationModule extends AbstractModule {
     this._logger.debug('Heartbeat received:', message, props);
 
     const response: OCPP1_6.HeartbeatResponse = {
-      currentTime: new Date().toISOString(),
+      currentTime: await this._ocpp16CurrentTime(
+        message.context.tenantId,
+        message.context.ocppConnectionName,
+      ),
     };
 
     const messageConfirmation = await this.sendCallResultWithMessage(message, response);
@@ -782,6 +842,19 @@ export class ConfigurationModule extends AbstractModule {
     // Create BootNotification response
     const bootNotificationResponse: OCPP1_6.BootNotificationResponse =
       await this._bootService.createOcpp16BootNotificationResponse(tenantId, ocppConnectionName);
+
+    // RCD local wall-time shim (see _ocpp16CurrentTime): the boot request
+    // itself names the vendor, so seed the cache and override here without
+    // a DB read.
+    {
+      const localTz = ConfigurationModule._ocpp16LocalTimeZone();
+      const bootVendor = (request.chargePointVendor ?? '').toUpperCase();
+      const isRcd = bootVendor === 'RCD' || bootVendor === 'RENOVA';
+      this._ocpp16LocalTimeVendorCache.set(`${tenantId}:${ocppConnectionName}`, isRcd);
+      if (localTz && isRcd) {
+        bootNotificationResponse.currentTime = ConfigurationModule._localWallTimeAsIso(localTz);
+      }
+    }
     // Check cached boot status for charger. Only Pending and Rejected statuses are cached.
     const cachedBootStatus: OCPP1_6.BootNotificationResponseStatus | null = await this._cache.get(
       BOOT_STATUS,
@@ -1074,10 +1147,23 @@ export class ConfigurationModule extends AbstractModule {
     this._logger.debug('DataTransfer received:', message, props);
 
     if (message.state === MessageState.Request) {
-      // Create response
-      const response: OCPP1_6.DataTransferResponse = {
+      const request = message.payload as OCPP1_6.DataTransferRequest;
+      let response: OCPP1_6.DataTransferResponse = {
         status: OCPP1_6.DataTransferResponseStatus.Rejected,
       };
+      // RCD ("Renova") tunnels its vendor protocol (realtime_status, bill,
+      // ...) through DataTransfer; the payment service consumes these off the
+      // broker. Acknowledge them in the firmware's own <op>_conf convention
+      // (observed on the wire: qrcode_req -> {"messageId":"qrcode_conf"})
+      // so the charger keeps sending instead of retrying/backing off.
+      // Everything else stays Rejected as before.
+      if ((request.vendorId ?? '').toLowerCase() === 'rcd') {
+        const operation = (request.messageId ?? '').replace(/_(req|send)$/, '');
+        response = {
+          status: OCPP1_6.DataTransferResponseStatus.Accepted,
+          data: JSON.stringify({ messageId: `${operation}_conf`, result: 0 }),
+        };
+      }
 
       const messageConfirmation = await this.sendCallResultWithMessage(message, response);
       this._logger.debug('DataTransfer response sent: ', messageConfirmation);
