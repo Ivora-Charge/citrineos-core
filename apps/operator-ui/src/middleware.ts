@@ -14,8 +14,9 @@ import { NextResponse } from 'next/server';
  * Unauthenticated requests are redirected to /login. Requests whose token
  * refresh failed (Keycloak session ended) are redirected with an error param.
  *
- * Protected: all routes except /login, /api/auth/**, /api/health, and
- * Next.js internal paths / static assets (see matcher below).
+ * Protected: all routes except /login, /signup (public self-signup +
+ * email-verification), /api/auth/**, /api/health, and Next.js internal
+ * paths / static assets (see matcher below).
  */
 export async function middleware(request: NextRequest) {
   const token = await getToken({
@@ -60,6 +61,6 @@ export const config = {
      *   /favicon.ico            – browser favicon
      *   /<file>.<ext>           – any root-level static file (svg, png, etc.)
      */
-    '/((?!login|api/auth|api/health|_next/static|_next/image|favicon\\.ico|[^/]+\\.[^/]+$).*)',
+    '/((?!login|signup|api/auth|api/health|_next/static|_next/image|favicon\\.ico|[^/]+\\.[^/]+$).*)',
   ],
 };

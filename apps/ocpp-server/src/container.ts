@@ -27,6 +27,7 @@ import {
 
 // -- Repositories --
 import {
+  ChargingStation,
   Component,
   DrizzleSecurityEventRepository,
   SequelizeRepository,
@@ -54,6 +55,7 @@ import {
   SequelizeTenantRepository,
   SequelizeTransactionEventRepository,
   SequelizeVariableMonitoringRepository,
+  Tenant,
 } from '@citrineos/core';
 
 // -- Services --
@@ -361,11 +363,45 @@ function registerNetwork(container: AwilixContainer): void {
     ).singleton(),
     // Ivora: resolve the connection tenant from a known station's
     // ChargingStations row (wins over the endpoint default) so claimed/moved
-    // chargers reconnect under their real owner.
-    resolveTenantIdByStationId: asFunction(
+    // chargers reconnect under their real owner. A never-seen station resolves
+    // to the inventory tenant instead of the endpoint default, so new units
+    // land in inventory awaiting the serial-number claim flow rather than in
+    // the platform tenant. Falls back to the endpoint default (null) while the
+    // inventory tenant doesn't exist yet.
+    resolveTenantIdByStationId: asFunction(({ locationRepository }) => {
+      // Positive lookups are cached for the process lifetime (the tenant's id
+      // never changes); misses are re-queried so creating the inventory tenant
+      // takes effect without a restart. Unknown-station connects are rare, so
+      // the extra query on miss is negligible.
+      let inventoryTenantId: number | null = null;
+      return async (ocppConnectionName: string): Promise<number | null> => {
+        const known = await locationRepository.resolveTenantIdByStationId(ocppConnectionName);
+        if (known !== null && known !== undefined) return known;
+        if (inventoryTenantId === null) {
+          const inventoryTenantName = process.env.INVENTORY_TENANT_NAME || 'Ivora Inventory';
+          // Cast: TenantAttributes doesn't type the name column (same
+          // workaround as SequelizeTenantRepository.createTenant).
+          const inv = await Tenant.findOne({
+            where: { name: inventoryTenantName } as any,
+            attributes: ['id'],
+          });
+          inventoryTenantId = inv?.id ?? null;
+        }
+        return inventoryTenantId;
+      };
+    }).singleton(),
+    // Ivora: create the ChargingStations row for a never-seen station as soon
+    // as it connects (unknown-allowed endpoints only). Without the row, the
+    // OCPPMessages tenant-guard trigger rejects the first BootNotification and
+    // the station can never register. The boot then fills in vendor/model/
+    // serial on the existing row.
+    createUnknownChargingStation: asFunction(
       ({ locationRepository }) =>
-        (ocppConnectionName: string): Promise<number | null> =>
-          locationRepository.resolveTenantIdByStationId(ocppConnectionName),
+        (tenantId: number, ocppConnectionName: string): Promise<unknown> =>
+          locationRepository.createOrUpdateChargingStation(
+            tenantId,
+            ChargingStation.build({ tenantId, ocppConnectionName }),
+          ),
     ).singleton(),
 
     unknownStationFilter: asClass(UnknownStationFilter).singleton(),

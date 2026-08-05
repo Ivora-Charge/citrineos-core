@@ -41,6 +41,9 @@ echo "==> allowing unmanaged user attributes (tenant_id) in realm $REALM"
 kcadm update "realms/$REALM/users/profile" \
   -s 'unmanagedAttributePolicy=ENABLED'
 
+echo "==> asserting the ivora login theme (adds the /signup link)"
+kcadm update "realms/$REALM" -s 'loginTheme=ivora'
+
 echo "==> re-asserting tenant_id=1 on tenant1-admin (import may have stripped it)"
 USER_ID=$(kcadm get "users" -r "$REALM" -q username=tenant1-admin --fields id --format csv --noquotes | head -1)
 if [ -n "$USER_ID" ]; then

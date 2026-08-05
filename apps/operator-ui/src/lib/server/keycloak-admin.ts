@@ -117,19 +117,30 @@ export async function createUserWithRoles(args: {
   lastName?: string;
   tenantId?: string;
   roles: string[];
+  /** Caller-chosen permanent password (self-signup). Omitted = generated
+   * temporary password the user must change on first login (invite flow). */
+  password?: string;
+  /** Create the account disabled (self-signup: enabled on email verify). */
+  enabled?: boolean;
 }): Promise<{ userId: string; tempPassword: string }> {
   const token = await adminToken();
-  const tempPassword = `Iv-${crypto.randomUUID().slice(0, 13)}`;
+  const tempPassword = args.password ?? `Iv-${crypto.randomUUID().slice(0, 13)}`;
 
   await api(token, 'POST', '/users', {
     username: args.email,
     email: args.email,
     firstName: args.firstName,
     lastName: args.lastName,
-    enabled: true,
+    enabled: args.enabled ?? true,
     emailVerified: false,
     attributes: args.tenantId ? { tenant_id: [args.tenantId] } : undefined,
-    credentials: [{ type: 'password', value: tempPassword, temporary: true }],
+    credentials: [
+      {
+        type: 'password',
+        value: tempPassword,
+        temporary: args.password === undefined,
+      },
+    ],
   });
 
   const created = (await api(
@@ -154,4 +165,34 @@ export async function createUserWithRoles(args: {
   await api(token, 'POST', `/users/${userId}/role-mappings/clients/${clientUuid}`, toAssign);
 
   return { userId, tempPassword };
+}
+
+/** Look up a user id by exact username/email; undefined when absent. */
+export async function findUserIdByEmail(email: string): Promise<string | undefined> {
+  const token = await adminToken();
+  const users = (await api(
+    token,
+    'GET',
+    `/users?username=${encodeURIComponent(email)}&exact=true`,
+  )) as any[];
+  return users?.[0]?.id as string | undefined;
+}
+
+/** Flip a user to enabled + email-verified (self-signup verification).
+ * Read-modify-write: Keycloak's PUT replaces the whole representation, and a
+ * partial body would silently drop attributes like tenant_id. */
+export async function activateUser(userId: string): Promise<void> {
+  const token = await adminToken();
+  const user = (await api(token, 'GET', `/users/${userId}`)) as Record<string, unknown>;
+  await api(token, 'PUT', `/users/${userId}`, {
+    ...user,
+    enabled: true,
+    emailVerified: true,
+  });
+}
+
+/** Best-effort removal (self-signup rollback when a later step fails). */
+export async function deleteUser(userId: string): Promise<void> {
+  const token = await adminToken();
+  await api(token, 'DELETE', `/users/${userId}`);
 }

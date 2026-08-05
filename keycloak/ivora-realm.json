@@ -2,6 +2,7 @@
   "realm": "ivora",
   "enabled": true,
   "displayName": "Ivora Charge",
+  "loginTheme": "ivora",
   "registrationAllowed": false,
   "resetPasswordAllowed": true,
   "rememberMe": true,

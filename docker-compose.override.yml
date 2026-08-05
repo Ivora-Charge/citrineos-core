@@ -59,6 +59,9 @@ services:
     volumes:
       - keycloak-data:/opt/keycloak/data
       - ./keycloak:/opt/keycloak/data/import:ro
+      # Custom login theme (adds the /signup link); realm loginTheme=ivora is
+      # set in ivora-realm.json (fresh installs) and asserted by bootstrap.sh.
+      - ./keycloak/themes/ivora:/opt/keycloak/themes/ivora:ro
 
   citrine-ui:
     image: citrineos-operator-ui:local
@@ -128,6 +131,12 @@ services:
       # GOOGLE_MAPS_API_KEY = map rendering; GOOGLE_MAPS_ADDRESS_API_KEY = geocoding/address lookup.
       GOOGLE_MAPS_API_KEY: "AIzaSyDNIxJptezylHwTwvwJkxyoY0pD_z3DMEw"
       GOOGLE_MAPS_ADDRESS_API_KEY: "AIzaSyDNIxJptezylHwTwvwJkxyoY0pD_z3DMEw"
+      # Self-signup (public /signup page): Resend transactional email for the
+      # verification link. Server-only; sending domain must be verified in the
+      # Resend account. Flip SELF_SIGNUP_ENABLED to "false" to close signups.
+      SELF_SIGNUP_ENABLED: "true"
+      RESEND_API_KEY: "${RESEND_API_KEY}"
+      SIGNUP_EMAIL_FROM: "Ivora Charge <no-reply@ivoracharge.com>"
 
 volumes:
   keycloak-data:

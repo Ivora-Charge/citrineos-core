@@ -69,6 +69,10 @@ export class WebsocketNetworkConnection implements INetworkConnection {
   ) => Promise<boolean>;
   private _getMaxChargingStationsForTenant?: (tenantId: number) => Promise<number | null>;
   private _resolveTenantIdByStationId?: (ocppConnectionName: string) => Promise<number | null>;
+  private _createUnknownChargingStation?: (
+    tenantId: number,
+    ocppConnectionName: string,
+  ) => Promise<unknown>;
 
   constructor({
     config,
@@ -81,6 +85,7 @@ export class WebsocketNetworkConnection implements INetworkConnection {
     getMaxChargingStationsForTenant,
     connectionManager,
     resolveTenantIdByStationId,
+    createUnknownChargingStation,
   }: {
     config: SystemConfig;
     cache: ICache;
@@ -94,8 +99,18 @@ export class WebsocketNetworkConnection implements INetworkConnection {
     // Ivora: a known station's ChargingStations row wins over the endpoint
     // default when resolving the connection tenant (claim/move correctness).
     resolveTenantIdByStationId?: (ocppConnectionName: string) => Promise<number | null>;
+    // Ivora: creates the ChargingStations row for a never-seen station at
+    // connect time (only used on endpoints that allow unknown stations). The
+    // OCPPMessages tenant-guard trigger rejects any message whose station row
+    // doesn't exist under the connection's tenant, so without this a first
+    // boot can never be persisted.
+    createUnknownChargingStation?: (
+      tenantId: number,
+      ocppConnectionName: string,
+    ) => Promise<unknown>;
   }) {
     this._resolveTenantIdByStationId = resolveTenantIdByStationId;
+    this._createUnknownChargingStation = createUnknownChargingStation;
     this._getMaxChargingStationsForTenant = getMaxChargingStationsForTenant;
     this._cache = cache;
     this._config = config;
@@ -322,8 +337,9 @@ export class WebsocketNetworkConnection implements INetworkConnection {
       // Station-based tenant resolution: chargers keep one central URL for
       // life, but their owning tenant changes when they are claimed/moved.
       // A known station's actual tenant always wins over the endpoint's
-      // configured default; unknown stations keep the default so first-boot
-      // registration still works.
+      // configured default. The injected resolver decides what unknown
+      // stations get (e.g. the inventory tenant); when it returns null they
+      // keep the endpoint default so first-boot registration still works.
       if (this._resolveTenantIdByStationId) {
         try {
           const segments = new URL(req.url ?? '', 'http://localhost').pathname
@@ -476,6 +492,22 @@ export class WebsocketNetworkConnection implements INetworkConnection {
         );
         ws.close(1011, 'Unknown charging station');
         return;
+      }
+
+      if (!exists && this._createUnknownChargingStation) {
+        try {
+          await this._createUnknownChargingStation(tenantId, ocppConnectionName);
+          this._logger.info(
+            `Registered never-seen station ${ocppConnectionName} under tenant ${tenantId}`,
+          );
+        } catch (error) {
+          this._logger.error(
+            `Failed to register never-seen station ${ocppConnectionName} under tenant ${tenantId}`,
+            error,
+          );
+          ws.close(1011, 'Failed to register unknown charging station');
+          return;
+        }
       }
 
       const identifier = createIdentifier(tenantId, ocppConnectionName);
