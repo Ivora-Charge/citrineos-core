@@ -178,11 +178,38 @@ const mapTenantToForm = (record: Record<string, unknown> | undefined): Onboardin
 // Component
 // ---------------------------------------------------------------------------
 
+// sessionStorage key for form values stashed across the Stripe redirect (the
+// hosted onboarding is a full navigation, which destroys all wizard state).
+const STRIPE_STASH_KEY = 'onboarding-stripe-stash';
+
 export const OnboardingWizard = () => {
   const tenantId = useTenantId();
   const { replace } = useRouter();
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [stripeReturn, setStripeReturn] = useState(false);
+
+  // Returning from Stripe hosted onboarding (?stripe=return|refresh): resume at
+  // the business-information step (step 3 in the stepper) instead of restarting
+  // the wizard. Read via window.location so the client page needs no Suspense
+  // boundary; the param is stripped so a reload doesn't re-jump.
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const stripeParam = params.get('stripe');
+    if (stripeParam) {
+      setStripeReturn(true);
+      window.history.replaceState(null, '', window.location.pathname);
+      if (stripeParam === 'return') {
+        // Resume at Business information (step 3) -- Stripe is done for now.
+        setStep(2);
+        toast.success('Stripe onboarding step finished — carrying on where you left off.');
+      } else {
+        // stripe=refresh: the hosted link expired; retry from Connect Stripe.
+        setStep(1);
+        toast.info('The Stripe link expired — start the connection again.');
+      }
+    }
+  }, []);
 
   // Stripe Connect (Phase 5/6): hosted onboarding + live status. The account
   // id is written to the tenant row server-side when the account is created;
@@ -206,10 +233,17 @@ export const OnboardingWizard = () => {
   const startStripeOnboarding = async () => {
     setConnecting(true);
     try {
-      const res = await createStripeOnboardingLinkAction(tenantId);
+      const res = await createStripeOnboardingLinkAction(tenantId, 'onboarding');
       if (!res.success) {
         toast.error(`Stripe onboarding failed: ${res.error}`);
         return;
+      }
+      // The wizard persists nothing until "Complete", and the Stripe redirect
+      // is a full navigation: stash what the user typed so it survives.
+      try {
+        sessionStorage.setItem(STRIPE_STASH_KEY, JSON.stringify(form.getValues()));
+      } catch {
+        // Storage full/blocked -- the DB-backed fields still reload fine.
       }
       window.location.href = res.data.url;
     } finally {
@@ -266,13 +300,37 @@ export const OnboardingWizard = () => {
     resolver: zodResolver(OnboardingSchema),
   });
 
+  const connectProfile = connectStatus?.profile;
+  const formLoading = form.refineCore.formLoading;
+
+  // After the Stripe redirect, restore what the user had typed before leaving
+  // (declared BEFORE the profile prefill effect so the stash is applied first;
+  // the prefill only fills fields that are still empty). Deferred until the
+  // tenant query resolves because refine resets the form at that point.
+  React.useEffect(() => {
+    if (!stripeReturn || formLoading) return;
+    try {
+      const raw = sessionStorage.getItem(STRIPE_STASH_KEY);
+      if (raw) {
+        sessionStorage.removeItem(STRIPE_STASH_KEY);
+        const stashed = JSON.parse(raw) as Partial<OnboardingForm>;
+        for (const [key, value] of Object.entries(stashed)) {
+          if (value !== '' && value != null) {
+            form.setValue(key as keyof OnboardingForm, value as any, { shouldDirty: true });
+          }
+        }
+      }
+    } catch {
+      // Corrupt/blocked storage -- fall back to the DB-backed values.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stripeReturn, formLoading]);
+
   // Prefill business fields from the Stripe account's public profile so the
   // tenant doesn't re-type what Stripe already collected. Fill-if-empty only
   // (a saved tenant record or the user's own edits always win), and re-run
   // once the tenant record has loaded: refine resets the form when the query
   // resolves, which would clobber values applied too early.
-  const connectProfile = connectStatus?.profile;
-  const formLoading = form.refineCore.formLoading;
   React.useEffect(() => {
     if (!connectProfile || formLoading) return;
     const fill = (name: keyof OnboardingForm, value?: string | null) => {
@@ -313,11 +371,14 @@ export const OnboardingWizard = () => {
       .flatMap((s: any) => {
         // Connector.evseId is the Evse table id; map each Evse to the Tariff on its
         // connector so the sync uses the EVSE's configured tariff rather than the
-        // flat default pricing.
+        // flat default pricing. Same map carries the connector nameplate specs.
         const tariffByEvseDbId = new Map<number, any>();
+        const connectorByEvseDbId = new Map<number, any>();
         for (const c of s.connectors ?? []) {
-          if (c?.evseId != null && c.Tariff) {
-            tariffByEvseDbId.set(Number(c.evseId), c.Tariff);
+          if (c?.evseId == null) continue;
+          if (c.Tariff) tariffByEvseDbId.set(Number(c.evseId), c.Tariff);
+          if (!connectorByEvseDbId.has(Number(c.evseId))) {
+            connectorByEvseDbId.set(Number(c.evseId), c);
           }
         }
         return (s.evses ?? []).map((e: any) => ({
@@ -327,6 +388,8 @@ export const OnboardingWizard = () => {
           // seed convention "{station}-{evseTypeId}".
           evseId: Number(e.evseTypeId ?? e.evseId),
           tariff: normalizeConnectorTariff(tariffByEvseDbId.get(Number(e.id))),
+          location: s.location ?? null,
+          connector: connectorByEvseDbId.get(Number(e.id)) ?? null,
         }));
       })
       .filter((e: StationEvseInput) => Number.isFinite(e.evseId));

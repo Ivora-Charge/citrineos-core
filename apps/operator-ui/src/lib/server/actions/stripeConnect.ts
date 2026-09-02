@@ -81,20 +81,23 @@ function resolveTenant(session: any, requested?: number): number {
 }
 
 /** Create (or refresh) the hosted Stripe onboarding link for a tenant. The
- * caller redirects the browser to the returned URL; Stripe returns to
- * /settings/business afterwards. */
+ * caller redirects the browser to the returned URL; Stripe returns to the
+ * originating flow afterwards: the onboarding wizard (which resumes at the
+ * business-information step) or /settings/business. */
 export async function createStripeOnboardingLinkAction(
   tenantId?: number,
+  returnTo: 'onboarding' | 'settings' = 'settings',
 ): Promise<ActionResult<{ url: string; stripe_account_id: string }>> {
   return authedAction(async (session) => {
     const tid = resolveTenant(session, tenantId);
     const base = process.env.NEXTAUTH_URL || 'http://localhost:3000';
+    const returnPath = returnTo === 'onboarding' ? '/onboarding' : '/settings/business';
     const result = await paymentApi('/onboarding-link', {
       method: 'POST',
       body: JSON.stringify({
         tenant_id: tid,
-        return_url: `${base}/settings/business?stripe=return`,
-        refresh_url: `${base}/settings/business?stripe=refresh`,
+        return_url: `${base}${returnPath}?stripe=return`,
+        refresh_url: `${base}${returnPath}?stripe=refresh`,
       }),
     });
     await audit({

@@ -37,6 +37,29 @@ export interface PaymentBusinessInput {
   country: string;
 }
 
+/** The CSMS Location assigned to a charging station (Edit charging station ->
+ * Location). When present it becomes the payment-side location for the EVSE, so
+ * the checkout page shows the site the operator assigned the charger to instead
+ * of the tenant's billing address. */
+export interface StationLocationInput {
+  id: number;
+  name?: string | null;
+  address?: string | null;
+  city?: string | null;
+  postalCode?: string | null;
+  state?: string | null;
+  country?: string | null;
+}
+
+/** Nameplate specs from the CSMS Connectors row, if the charger reported /
+ * the operator configured them. */
+export interface StationConnectorSpecs {
+  powerType?: string | null;
+  maximumVoltage?: number | null;
+  maximumAmperage?: number | null;
+  maximumPowerWatts?: number | null;
+}
+
 /** Minimal EVSE shape we pull from CitrineOS to build sync entries. */
 export interface StationEvseInput {
   /** CitrineOS ocppConnectionName -> payment station_id */
@@ -50,6 +73,11 @@ export interface StationEvseInput {
    * default tariff). Without this, every EVSE was synced with the flat default.
    */
   tariff?: Partial<PaymentTariffInput>;
+  /** The station's assigned CSMS location; falls back to the tenant business
+   * address when the charger has no location yet. */
+  location?: StationLocationInput | null;
+  /** Connector nameplate specs; omitted fields keep the payment defaults. */
+  connector?: StationConnectorSpecs | null;
 }
 
 /** A connector's Tariff as returned by the GraphQL API (decimal columns may be
@@ -135,15 +163,21 @@ export const buildCatalogSyncEntries = (
     // any field the assigned tariff leaves unset, and is the whole tariff when no
     // tariff is assigned to the connector.
     const effective = { ...tariff, ...evse.tariff };
+    // The station's assigned CSMS location wins over the tenant business
+    // address; each site gets its own payment location row (keyed off the CSMS
+    // location id) so the checkout page shows where the charger actually is.
+    const loc = evse.location;
+    const specs = evse.connector;
     return {
       operator_name: business.operatorName,
       stripe_account_id: business.stripeAccountId,
-      location_id: locationId,
-      address: business.address,
-      postal_code: business.postalCode,
-      city: business.city,
-      state: business.state,
-      country: business.country,
+      location_id: loc ? `${locationId}-loc-${loc.id}` : locationId,
+      address: (loc ? loc.address : business.address) ?? '',
+      postal_code: (loc ? loc.postalCode : business.postalCode) ?? '',
+      city: (loc ? loc.city : business.city) ?? '',
+      state: (loc ? loc.state : business.state) ?? '',
+      country: (loc ? loc.country : business.country) ?? '',
+      ...(loc?.name ? { location_name: loc.name } : {}),
       station_id: evse.ocppConnectionName,
       ocpp_evse_id: evse.evseId,
       evse_id: buildEvseId(evse.ocppConnectionName, evse.evseId),
@@ -154,6 +188,15 @@ export const buildCatalogSyncEntries = (
       price_minute: effective.priceMinute,
       price_session: effective.priceSession,
       payment_fee: effective.paymentFee,
+      // Connector nameplate specs: only sent when the CSMS actually has them,
+      // so the payment-side defaults (and tri-state max_power_watts) hold
+      // otherwise.
+      ...(specs?.powerType ? { power_type: normalizePowerType(specs.powerType) } : {}),
+      ...(specs?.maximumVoltage ? { max_voltage: Number(specs.maximumVoltage) } : {}),
+      ...(specs?.maximumAmperage ? { max_amperage: Number(specs.maximumAmperage) } : {}),
+      ...(specs?.maximumPowerWatts
+        ? { max_power_watts: Number(specs.maximumPowerWatts) }
+        : {}),
     };
   });
 

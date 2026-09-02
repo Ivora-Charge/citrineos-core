@@ -83,6 +83,10 @@ export const CHARGING_STATIONS_LIST_QUERY = gql`
         tariffId
         status
         errorCode
+        powerType
+        maximumVoltage
+        maximumAmperage
+        maximumPowerWatts
         timestamp
         info
         vendorId

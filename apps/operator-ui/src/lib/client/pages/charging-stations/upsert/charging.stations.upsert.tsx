@@ -481,14 +481,16 @@ export const ChargingStationUpsert = ({
 
   // Write the picked tariff to every connector that differs, then push the
   // pricing to the payment service (same follow-up the connector editor does).
-  const applyTariff = async () => {
-    if (!id || tariffId === undefined || tariffId === NEW_TARIFF) return;
+  // Returns the tariff id it synced (if any) so the caller can skip re-syncing
+  // it in the location follow-up below.
+  const applyTariff = async (): Promise<number | undefined> => {
+    if (!id || tariffId === undefined || tariffId === NEW_TARIFF) return undefined;
     let effectiveTariffId = tariffId;
     if (tariffId === TENANT_DEFAULT_TARIFF) {
       const resolved = await resolveTenantDefaultTariff();
       if (!resolved) {
         toast.error(translate('ChargingStations.upsert.tariffApplyFailed'));
-        return;
+        return undefined;
       }
       effectiveTariffId = resolved;
     }
@@ -516,9 +518,33 @@ export const ChargingStationUpsert = ({
         } else {
           toast.success(translate('ChargingStations.upsert.tariffApplied'));
         }
+        return effectiveTariffId;
       }
     } catch (err: any) {
       toast.error(`${translate('ChargingStations.upsert.tariffApplyFailed')}: ${err.message}`);
+    }
+    return undefined;
+  };
+
+  // A station edit can change the assigned location without touching tariffs;
+  // the payment catalog carries the location per EVSE, so re-push every tariff
+  // already wired to this station's connectors (skipping the one applyTariff
+  // just synced). Best-effort: failures surface as a toast, the save stands.
+  const syncStationLocation = async (excludeTariffId?: number) => {
+    const tariffIds = [
+      ...new Set(
+        connectors
+          .map((c) => c.tariffId)
+          .filter((t): t is number => t != null && t !== excludeTariffId),
+      ),
+    ];
+    for (const tid of tariffIds) {
+      const sync = await syncTariffToPaymentAction(tid, {
+        tenantIdOverride: String(tenantId),
+      });
+      if (!sync.success) {
+        toast.error(`${translate('ChargingStations.upsert.tariffSyncFailed')}: ${sync.error}`);
+      }
     }
   };
 
@@ -547,7 +573,8 @@ export const ChargingStationUpsert = ({
       if (result) {
         const finalStationId = id || (result as any).data?.id;
 
-        await applyTariff();
+        const appliedTariffId = await applyTariff();
+        await syncStationLocation(appliedTariffId);
 
         // Upload image to S3
         if (uploadedFile && finalStationId) {

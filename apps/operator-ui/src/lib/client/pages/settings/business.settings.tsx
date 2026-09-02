@@ -44,6 +44,9 @@ const stripeAccountIdSchema = z
   });
 
 const BusinessSchema = z.object({
+  // Tenants.name -- the organization name given when the tenant was created, editable here so
+  // it isn't frozen once the onboarding wizard completes.
+  name: z.string().min(1, 'Required'),
   businessName: z.string().min(1, 'Required'),
   businessAddress: z.string().min(1, 'Required'),
   businessPostalCode: z.string().optional().default(''),
@@ -66,6 +69,7 @@ const BusinessSchema = z.object({
 type BusinessForm = z.infer<typeof BusinessSchema>;
 
 const defaults: BusinessForm = {
+  name: '',
   businessName: '',
   businessAddress: '',
   businessPostalCode: '',
@@ -97,6 +101,7 @@ const mapTenant = (record: Record<string, unknown> | undefined): BusinessForm =>
     record?.[k] == null || record[k] === '' ? fallback : Number(record[k]);
   return {
     ...defaults,
+    name: str('name'),
     businessName: str('businessName') || str('name'),
     businessAddress: str('businessAddress'),
     businessPostalCode: str('businessPostalCode'),
@@ -180,28 +185,36 @@ export const BusinessSettings = () => {
 
   const evses: StationEvseInput[] = useMemo(() => {
     const stations = stationsData?.data ?? [];
-    return stations.flatMap((s: any) => {
-      // Connector.evseId is the Evse table id; map each Evse to the Tariff on its
-      // connector so the sync uses the EVSE's configured tariff rather than the
-      // flat default pricing.
-      const tariffByEvseDbId = new Map<number, any>();
-      for (const c of s.connectors ?? []) {
-        if (c?.evseId != null && c.Tariff) {
-          tariffByEvseDbId.set(Number(c.evseId), c.Tariff);
+    return stations
+      .flatMap((s: any) => {
+        // Connector.evseId is the Evse table id; map each Evse to the Tariff on its
+        // connector so the sync uses the EVSE's configured tariff rather than the
+        // flat default pricing. Same map carries the connector nameplate specs.
+        const tariffByEvseDbId = new Map<number, any>();
+        const connectorByEvseDbId = new Map<number, any>();
+        for (const c of s.connectors ?? []) {
+          if (c?.evseId == null) continue;
+          if (c.Tariff) tariffByEvseDbId.set(Number(c.evseId), c.Tariff);
+          if (!connectorByEvseDbId.has(Number(c.evseId))) {
+            connectorByEvseDbId.set(Number(c.evseId), c);
+          }
         }
-      }
-      return (s.evses ?? []).map((e: any) => ({
-        ocppConnectionName: s.ocppConnectionName as string,
-        // CitrineOS stores the OCPP evse number in evseTypeId; evseId is often
-        // null. See onboarding.wizard.tsx for the mapping rationale.
-        evseId: Number(e.evseTypeId ?? e.evseId),
-        tariff: normalizeConnectorTariff(tariffByEvseDbId.get(Number(e.id))),
-      }));
-    }).filter((e: StationEvseInput) => Number.isFinite(e.evseId));
+        return (s.evses ?? []).map((e: any) => ({
+          ocppConnectionName: s.ocppConnectionName as string,
+          // CitrineOS stores the OCPP evse number in evseTypeId; evseId is often
+          // null. See onboarding.wizard.tsx for the mapping rationale.
+          evseId: Number(e.evseTypeId ?? e.evseId),
+          tariff: normalizeConnectorTariff(tariffByEvseDbId.get(Number(e.id))),
+          location: s.location ?? null,
+          connector: connectorByEvseDbId.get(Number(e.id)) ?? null,
+        }));
+      })
+      .filter((e: StationEvseInput) => Number.isFinite(e.evseId));
   }, [stationsData]);
 
   const save = form.handleSubmit(async (values: any) => {
     await form.refineCore.onFinish({
+      name: values.name,
       businessName: values.businessName,
       businessAddress: values.businessAddress,
       businessPostalCode: values.businessPostalCode || null,
@@ -288,10 +301,28 @@ export const BusinessSettings = () => {
               <section>
                 <h3 className={heading3Style}>Business</h3>
                 <div className={cardGridStyle}>
-                  <FormField control={form.control} label="Legal / display name" name="businessName" required>
+                  <FormField
+                    control={form.control}
+                    label="Organization / tenant name"
+                    name="name"
+                    required
+                  >
                     <Input />
                   </FormField>
-                  <FormField control={form.control} label="Street address" name="businessAddress" required>
+                  <FormField
+                    control={form.control}
+                    label="Legal / display name"
+                    name="businessName"
+                    required
+                  >
+                    <Input />
+                  </FormField>
+                  <FormField
+                    control={form.control}
+                    label="Street address"
+                    name="businessAddress"
+                    required
+                  >
                     <Input />
                   </FormField>
                   <FormField control={form.control} label="Postal code" name="businessPostalCode">
@@ -306,10 +337,18 @@ export const BusinessSettings = () => {
                   <FormField control={form.control} label="Country" name="businessCountry">
                     <Input />
                   </FormField>
-                  <FormField control={form.control} label="Contact email" name="businessContactEmail">
+                  <FormField
+                    control={form.control}
+                    label="Contact email"
+                    name="businessContactEmail"
+                  >
                     <Input type="email" />
                   </FormField>
-                  <FormField control={form.control} label="Contact phone" name="businessContactPhone">
+                  <FormField
+                    control={form.control}
+                    label="Contact phone"
+                    name="businessContactPhone"
+                  >
                     <Input />
                   </FormField>
                 </div>
@@ -330,8 +369,10 @@ export const BusinessSettings = () => {
                         {connectStatus.charges_enabled
                           ? '✓ Stripe account active — payments enabled'
                           : (connectStatus.requirements_due?.length ?? 0) > 0
-                            ? `Action needed in Stripe: ${connectStatus.requirements_due!
-                                .map((r) => r.split('.').pop()?.replace(/_/g, ' '))
+                            ? `Action needed in Stripe: ${connectStatus
+                                .requirements_due!.map((r) =>
+                                  r.split('.').pop()?.replace(/_/g, ' '),
+                                )
                                 .join(', ')} — click the button to continue`
                             : connectStatus.details_submitted
                               ? 'Details submitted — Stripe is reviewing'
@@ -364,7 +405,12 @@ export const BusinessSettings = () => {
                   These values are pushed to the payment service when you sync.
                 </p>
                 <div className={cardGridStyle}>
-                  <FormField control={form.control} label="Currency (3-letter)" name="currency" required>
+                  <FormField
+                    control={form.control}
+                    label="Currency (3-letter)"
+                    name="currency"
+                    required
+                  >
                     <Input maxLength={3} />
                   </FormField>
                   <FormField control={form.control} label="Price per kWh" name="priceKwh" required>
@@ -376,7 +422,11 @@ export const BusinessSettings = () => {
                   <FormField control={form.control} label="Price per session" name="priceSession">
                     <Input type="number" min="0" step="0.01" />
                   </FormField>
-                  <FormField control={form.control} label="Authorization amount" name="authorizationAmount">
+                  <FormField
+                    control={form.control}
+                    label="Authorization amount"
+                    name="authorizationAmount"
+                  >
                     <Input type="number" min="0" step="0.01" />
                   </FormField>
                   <FormField control={form.control} label="Tax rate" name="taxRate">
@@ -390,7 +440,11 @@ export const BusinessSettings = () => {
 
               <div className="flex items-center justify-end gap-4">
                 <Button type="button" variant="outline" onClick={syncPayments} disabled={syncing}>
-                  {syncing ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+                  {syncing ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="size-4" />
+                  )}
                   Sync payments ({evses.length} EVSE{evses.length === 1 ? '' : 's'})
                 </Button>
                 <Button type="button" onClick={save} disabled={form.refineCore.formLoading}>
