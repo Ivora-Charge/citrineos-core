@@ -105,8 +105,9 @@ services:
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
       # Server-only: user invites and claims writes (GoTrue admin API).
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?missing from citrineos-core/.env}
-      # Invites land on the analytics set-password screen (Supabase Site URL).
-      ANALYTICS_URL: https://analytics.ivoracharge.com
+      # Invites land on the platform set-password screen (Supabase Site URL;
+      # analytics.ivoracharge.com redirects here since 2026-09-02).
+      ANALYTICS_URL: https://platform.ivoracharge.com
       # Server-side privileged Hasura access (syncTariffToPayment etc.). Never
       # handed to the browser under the supabase provider.
       HASURA_ADMIN_SECRET: ${HASURA_GRAPHQL_ADMIN_SECRET}
