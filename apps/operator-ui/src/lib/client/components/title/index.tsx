@@ -19,8 +19,16 @@ const serifStack =
 export const Logo: React.FC<LogoProps> = (props: LogoProps) => {
   const { collapsed = false } = props;
 
+  // The logo takes the user back to the Ivora launcher (the analytics home
+  // page with one tile per product) when NEXT_PUBLIC_LAUNCHER_URL is set;
+  // otherwise to this app's overview. Same sign-in either way (shared SSO
+  // cookie), so it is a plain link.
   return (
-    <div className="flex h-full w-full items-center justify-center gap-2.5">
+    <a
+      href={config.launcherUrl || '/overview'}
+      title={config.launcherUrl ? 'Back to the Ivora launcher' : 'Overview'}
+      className="flex h-full w-full items-center justify-center gap-2.5"
+    >
       <Image
         src="/ivora-mark.png"
         alt={`${config.appName} Logo`}
@@ -39,6 +47,6 @@ export const Logo: React.FC<LogoProps> = (props: LogoProps) => {
           <span className="ml-1.5 font-normal text-muted-foreground">Charge</span>
         </motion.span>
       )}
-    </div>
+    </a>
   );
 };

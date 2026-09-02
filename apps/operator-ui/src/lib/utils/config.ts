@@ -22,6 +22,7 @@ const getConfig: () => {
   citrineCoreInternalUrl?: string; // SERVER ONLY. Where the Next.js server reaches CitrineOS core (e.g. http://citrine:8080). Never the public URL.
   fileServer?: string;
   logoUrl?: string;
+  launcherUrl?: string; // Where the sidebar logo goes: the analytics launcher for this environment. Inlined at build.
   metricsUrl?: string;
   adminEmail?: string;
   adminPassword?: string;
@@ -39,7 +40,6 @@ const getConfig: () => {
   fileStorageType?: string;
   gcpCloudStorageBucketName?: string;
   gcpCloudStorageCoreBucketName?: string;
-  helpVideoUrl?: string;
   allowImageUpload: boolean;
   paymentServiceUrl?: string; // Base URL of citrineos-payment, e.g. http://localhost:9010
 } = () => {
@@ -119,6 +119,7 @@ const getConfig: () => {
     citrineCoreInternalUrl: process.env.CITRINE_CORE_INTERNAL_URL,
     fileServer: process.env.NEXT_PUBLIC_FILE_SERVER_URL,
     logoUrl: process.env.NEXT_PUBLIC_LOGO_URL,
+    launcherUrl: process.env.NEXT_PUBLIC_LAUNCHER_URL,
     metricsUrl: process.env.NEXT_PUBLIC_METRICS_URL,
     adminEmail: process.env.NEXT_PUBLIC_ADMIN_EMAIL,
     adminPassword: process.env.ADMIN_PASSWORD,
@@ -138,7 +139,6 @@ const getConfig: () => {
     gcpCloudStorageCoreBucketName: process.env.GCP_CLOUD_STORAGE_CORE_BUCKET_NAME,
     awsS3BucketName: process.env.AWS_S3_BUCKET_NAME || 'YOUR_AWS_S3_BUCKET_NAME',
     awsS3CoreBucketName: process.env.AWS_S3_CORE_BUCKET_NAME || 'YOUR_AWS_S3_CORE_BUCKET_NAME',
-    helpVideoUrl: process.env.NEXT_PUBLIC_HELP_VIDEO_URL || '/videos/help-video.mp4', // Default local path; override with env var for external URLs
     allowImageUpload: process.env.ALLOW_IMAGE_UPLOAD === 'true',
     paymentServiceUrl: process.env.NEXT_PUBLIC_PAYMENT_SERVICE_URL,
   };

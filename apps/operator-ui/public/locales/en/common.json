@@ -153,22 +153,6 @@
         "submit": "Send reset instructions"
       }
     },
-    "register": {
-      "title": "Sign up for your account",
-      "fields": {
-        "email": "Email",
-        "password": "Password"
-      },
-      "errors": {
-        "validEmail": "Invalid email address",
-        "requiredEmail": "Email is required",
-        "requiredPassword": "Password is required"
-      },
-      "buttons": {
-        "submit": "Register",
-        "haveAccount": "Have an account?"
-      }
-    },
     "updatePassword": {
       "title": "Update password",
       "fields": {

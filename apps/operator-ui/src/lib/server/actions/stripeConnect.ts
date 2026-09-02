@@ -86,12 +86,14 @@ function resolveTenant(session: any, requested?: number): number {
  * business-information step) or /settings/business. */
 export async function createStripeOnboardingLinkAction(
   tenantId?: number,
-  returnTo: 'onboarding' | 'settings' = 'settings',
 ): Promise<ActionResult<{ url: string; stripe_account_id: string }>> {
   return authedAction(async (session) => {
     const tid = resolveTenant(session, tenantId);
-    const base = process.env.NEXTAUTH_URL || 'http://localhost:3000';
-    const returnPath = returnTo === 'onboarding' ? '/onboarding' : '/settings/business';
+    // Public URL of this console (OPERATOR_UI_URL in compose); Stripe sends
+    // the browser back here. The onboarding wizard is gone, so the only
+    // return point is the business settings page.
+    const base = process.env.OPERATOR_UI_URL || 'http://localhost:3000';
+    const returnPath = '/settings/business';
     const result = await paymentApi('/onboarding-link', {
       method: 'POST',
       body: JSON.stringify({

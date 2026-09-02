@@ -153,22 +153,6 @@
         "submit": "Enviar instruções de redefinição"
       }
     },
-    "register": {
-      "title": "Cadastre-se na sua conta",
-      "fields": {
-        "email": "E-mail",
-        "password": "Senha"
-      },
-      "errors": {
-        "validEmail": "Endereço de e-mail inválido",
-        "requiredEmail": "O e-mail é obrigatório",
-        "requiredPassword": "A senha é obrigatória"
-      },
-      "buttons": {
-        "submit": "Cadastrar",
-        "haveAccount": "Já tem uma conta?"
-      }
-    },
     "updatePassword": {
       "title": "Atualizar senha",
       "fields": {
