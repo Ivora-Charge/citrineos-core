@@ -18,8 +18,15 @@ import { type AuthenticationContextProvider, type User } from '@lib/utils/access
 import config from '@lib/utils/config';
 import { HasuraHeader, HasuraRole } from '@lib/utils/hasura.types';
 import { useLogin, useTranslate, type AuthProvider } from '@refinedev/core';
-import React, { useState } from 'react';
-import { signIn } from 'next-auth/react';
+import React, { useEffect, useState } from 'react';
+
+// Messages for the ?error= reasons middleware.ts and the Supabase auth
+// provider redirect here with.
+const LOGIN_ERRORS: Record<string, string> = {
+  NoAccess: 'Your Ivora account has no access to this console. Ask an administrator to grant it.',
+  Suspended: 'This account is suspended. Contact Ivora to restore access.',
+  SessionExpired: 'Your session has ended. Please sign in again.',
+};
 
 /**
  * Configuration for the auth provider
@@ -52,6 +59,11 @@ const LoginPage: React.FC = () => {
   const { mutate: login, isPending: isLoading } = useLogin();
   const translate = useTranslate();
 
+  useEffect(() => {
+    const reason = new URLSearchParams(window.location.search).get('error');
+    if (reason && LOGIN_ERRORS[reason]) setError(LOGIN_ERRORS[reason]);
+  }, []);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -59,8 +71,13 @@ const LoginPage: React.FC = () => {
     login(
       { email, password },
       {
-        onError: () => {
-          setError(translate('pages.login.invalidCredentials'));
+        onError: (err: any) => {
+          const name = err?.name as string | undefined;
+          setError(
+            name && LOGIN_ERRORS[name]
+              ? LOGIN_ERRORS[name]
+              : translate('pages.login.invalidCredentials'),
+          );
         },
       },
     );
@@ -207,13 +224,16 @@ export const createGenericAuthProvider = (
   // Return the auth provider implementation
   return {
     login: async ({ email, password }) => {
-      const result = await signIn('generic', {
-        username: email,
-        password,
-        redirect: false,
-      });
+      // Local development only: the password is checked server-side by
+      // app/api/auth/generic/route.ts (ADMIN_PASSWORD never reaches the
+      // browser bundle).
+      const result = await fetch('/api/auth/generic', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: email, password }),
+      }).catch(() => null);
 
-      if (!result || result.error || !result.ok) {
+      if (!result || !result.ok) {
         return {
           success: false,
           error: {

@@ -1,21 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Contributors to the CitrineOS Project
 //
 // SPDX-License-Identifier: Apache-2.0
-import { getServerSession } from 'next-auth';
-import authOptions from '@app/api/auth/[...nextauth]/options';
-import { type Session } from 'next-auth';
 import { hasAnyRole, hasPlatformRole } from '@lib/utils/csms-claims';
+import { AuthUnavailableError, getCsmsSession, type CsmsSession } from '@lib/server/session';
 
-export interface AuthedSession extends Session {
-  accessToken: string;
-  error?: string;
-  user: Session['user'] & {
-    roles: string[];
-    /** Tenant bound to the token. Always set for tenant users; platform staff
-     * may or may not have a home tenant (see @lib/utils/csms-claims). */
-    tenantId?: string;
-  };
-}
+/** The verified caller of a server action (see @lib/server/session). */
+export type AuthedSession = CsmsSession;
 
 export type ActionResult<T> =
   | { success: true; data: T }
@@ -36,8 +26,13 @@ export async function authedAction<T>(
   let session: AuthedSession | null = null;
 
   try {
-    session = (await getServerSession(authOptions)) as AuthedSession | null;
-  } catch {
+    // No session, an expired refresh token, invalid claims or a billing block
+    // all come back as null: the caller has to sign in again.
+    session = await getCsmsSession();
+  } catch (err) {
+    if (err instanceof AuthUnavailableError) {
+      return { success: false, error: 'Authentication service unavailable', code: 'ERROR' };
+    }
     return {
       success: false,
       error: 'Failed to retrieve session',
@@ -47,12 +42,6 @@ export async function authedAction<T>(
 
   if (!session?.user) {
     return { success: false, error: 'Unauthenticated', code: 'UNAUTHORIZED' };
-  }
-
-  // Supabase refresh failed (or the refreshed claims no longer validate) --
-  // the token is dead, force re-login.
-  if (session.error === 'RefreshAccessTokenError') {
-    return { success: false, error: 'Session expired', code: 'UNAUTHORIZED' };
   }
 
   try {

@@ -80,6 +80,18 @@ const getConfig: () => {
         'CSMS_ENV is unset in production; it selects the app_metadata.csms.<env> claims subtree this box trusts (test|prod)',
       );
     }
+    // The browser bundle carries its own copy (NEXT_PUBLIC_CSMS_ENV, inlined
+    // at build) so the UI can read the same claims subtree the server
+    // enforces. An image built for one environment must not run as another.
+    if (
+      authProvider === 'supabase' &&
+      process.env.NEXT_PUBLIC_CSMS_ENV &&
+      process.env.NEXT_PUBLIC_CSMS_ENV !== process.env.CSMS_ENV
+    ) {
+      throw new Error(
+        `NEXT_PUBLIC_CSMS_ENV (${process.env.NEXT_PUBLIC_CSMS_ENV}, baked into this image) does not match CSMS_ENV (${process.env.CSMS_ENV}); refusing to start`,
+      );
+    }
   }
 
   return {
@@ -114,7 +126,9 @@ const getConfig: () => {
     supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
     supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-    csmsEnv: process.env.CSMS_ENV,
+    // Server: CSMS_ENV (runtime). Browser: NEXT_PUBLIC_CSMS_ENV (build time);
+    // the production check above guarantees the two agree.
+    csmsEnv: process.env.CSMS_ENV || process.env.NEXT_PUBLIC_CSMS_ENV,
     awsRegion: process.env.AWS_REGION || 'us-east-1',
     awsAccessKeyId: process.env.AWS_ACCESS_KEY_ID,
     awsSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,

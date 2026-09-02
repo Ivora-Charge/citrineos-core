@@ -17,7 +17,6 @@ import type { I18nProvider } from '@refinedev/core';
 import { Refine } from '@refinedev/core';
 import routerProvider from '@refinedev/nextjs-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { SessionProvider } from 'next-auth/react';
 import { useLocale, useTranslations } from 'next-intl';
 import React, { useEffect, useMemo, useState } from 'react';
 
@@ -70,44 +69,42 @@ export function Providers({
   if (!mounted) return null;
 
   return (
-    <SessionProvider>
-      <ReduxProvider>
-        <QueryClientProvider client={queryClient}>
-          <ThemeProvider
-            attribute="data-theme"
-            defaultTheme={defaultMode}
-            enableSystem={false}
-            storageKey="theme"
-            disableTransitionOnChange
-          >
-            <Toaster />
-            {/* <DevtoolsProvider>
+    <ReduxProvider>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider
+          attribute="data-theme"
+          defaultTheme={defaultMode}
+          enableSystem={false}
+          storageKey="theme"
+          disableTransitionOnChange
+        >
+          <Toaster />
+          {/* <DevtoolsProvider>
               <Suspense fallback={<div>Loading...</div>}> */}
-            <Refine
-              routerProvider={routerProvider}
-              dataProvider={dataProvider}
-              liveProvider={liveProvider}
-              notificationProvider={notificationProvider}
-              authProvider={authProvider}
-              accessControlProvider={accessControlProvider}
-              i18nProvider={i18nProvider}
-              resources={resources}
-              options={{
-                warnWhenUnsavedChanges: true,
-                projectId: '6ZV3T4-Lyy7B3-Dr5Uhd',
-                liveMode: 'auto',
-                reactQuery: {
-                  clientConfig: queryClient,
-                },
-              }}
-            >
-              {children}
-            </Refine>
-            {/* </Suspense>
+          <Refine
+            routerProvider={routerProvider}
+            dataProvider={dataProvider}
+            liveProvider={liveProvider}
+            notificationProvider={notificationProvider}
+            authProvider={authProvider}
+            accessControlProvider={accessControlProvider}
+            i18nProvider={i18nProvider}
+            resources={resources}
+            options={{
+              warnWhenUnsavedChanges: true,
+              projectId: '6ZV3T4-Lyy7B3-Dr5Uhd',
+              liveMode: 'auto',
+              reactQuery: {
+                clientConfig: queryClient,
+              },
+            }}
+          >
+            {children}
+          </Refine>
+          {/* </Suspense>
             </DevtoolsProvider> */}
-          </ThemeProvider>
-        </QueryClientProvider>
-      </ReduxProvider>
-    </SessionProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
+    </ReduxProvider>
   );
 }

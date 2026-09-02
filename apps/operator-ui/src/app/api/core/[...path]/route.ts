@@ -29,10 +29,10 @@
  * checks here are the ones that matter and do not rely on it.
  */
 
-import { getToken } from 'next-auth/jwt';
 import { type NextRequest, NextResponse } from 'next/server';
 import config from '@lib/utils/config';
 import { audit } from '@lib/server/audit';
+import { AuthUnavailableError, getCsmsSession } from '@lib/server/session';
 import { hasAnyRole, hasPlatformRole, MUTATING_ROLES, VALID_ROLES } from '@lib/utils/csms-claims';
 
 export const dynamic = 'force-dynamic';
@@ -49,21 +49,20 @@ function problem(status: number, error: string) {
 async function handle(req: NextRequest, ctx: RouteContext): Promise<NextResponse> {
   const method = req.method.toUpperCase();
 
-  // 1. Session. getToken decrypts the NextAuth JWT cookie; roles/tenantId are
-  //    what options.ts validated from the Supabase claims.
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
-  if (!token || token.error === 'RefreshAccessTokenError') {
+  // 1. Session: the Supabase session in the shared SSO cookie, signature
+  //    verified and claims validated by @lib/server/session.
+  let session;
+  try {
+    session = await getCsmsSession();
+  } catch (err) {
+    if (err instanceof AuthUnavailableError) return problem(503, 'Authentication unavailable');
+    throw err;
+  }
+  if (!session) {
     return problem(401, 'Unauthenticated');
   }
-  const roles: string[] = Array.isArray(token.roles)
-    ? (token.roles as unknown[]).filter((r): r is string => typeof r === 'string')
-    : [];
-  const sessionTenantId =
-    typeof token.tenantId === 'string' && token.tenantId.trim() !== ''
-      ? token.tenantId.trim()
-      : typeof token.tenantId === 'number'
-        ? String(token.tenantId)
-        : undefined;
+  const roles: string[] = session.user.roles;
+  const sessionTenantId = session.user.tenantId;
   if (!hasAnyRole(roles, VALID_ROLES)) {
     return problem(403, 'No CSMS role');
   }
@@ -167,11 +166,7 @@ async function handle(req: NextRequest, ctx: RouteContext): Promise<NextResponse
     const auditTenant =
       queryTenantId && /^\d+$/.test(queryTenantId) ? queryTenantId : sessionTenantId;
     await audit({
-      actor:
-        (typeof token.email === 'string' && token.email) ||
-        (typeof token.name === 'string' && token.name) ||
-        token.sub ||
-        'unknown',
+      actor: session.user.email || session.user.name || session.user.id || 'unknown',
       actorRoles: roles,
       tenantId: auditTenant && /^\d+$/.test(auditTenant) ? auditTenant : undefined,
       action: 'core.request',
