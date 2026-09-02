@@ -3,12 +3,17 @@
 // SPDX-License-Identifier: Apache-2.0
 'use server';
 
-import { authedAction, type ActionResult } from '@lib/utils/action-guard';
-import config from '@lib/utils/config';
 import {
-  syncPaymentCatalogAction,
-  type PaymentCatalogSyncResult,
-} from './syncPaymentCatalog';
+  authedActionWithRoles,
+  resolveActingTenantId,
+  type ActionResult,
+} from '@lib/utils/action-guard';
+import { MUTATING_ROLES, PLATFORM_ROLES } from '@lib/utils/csms-claims';
+import config from '@lib/utils/config';
+
+// Same audience as syncPaymentCatalogAction: tenant admins and platform staff.
+const SYNC_ROLES: readonly string[] = [...new Set([...MUTATING_ROLES, ...PLATFORM_ROLES])];
+import { syncPaymentCatalogAction, type PaymentCatalogSyncResult } from './syncPaymentCatalog';
 import {
   buildCatalogSyncEntries,
   normalizeConnectorTariff,
@@ -46,6 +51,15 @@ const TARIFF_PAYMENT_SYNC_QUERY = `
     }
     ChargingStations(where: { Connectors: { tariffId: { _eq: $tariffId } } }) {
       ocppConnectionName
+      Location {
+        id
+        name
+        address
+        city
+        postalCode
+        state
+        country
+      }
       evses: Evses {
         id
         evseTypeId
@@ -54,6 +68,10 @@ const TARIFF_PAYMENT_SYNC_QUERY = `
       connectors: Connectors(where: { tariffId: { _eq: $tariffId } }) {
         evseId
         tariffId
+        powerType
+        maximumVoltage
+        maximumAmperage
+        maximumPowerWatts
       }
     }
   }
@@ -64,8 +82,24 @@ interface TariffPaymentSyncData {
   Tenants_by_pk: Record<string, string | null> | null;
   ChargingStations: Array<{
     ocppConnectionName: string;
+    Location: {
+      id: number;
+      name: string | null;
+      address: string | null;
+      city: string | null;
+      postalCode: string | null;
+      state: string | null;
+      country: string | null;
+    } | null;
     evses: Array<{ id: number; evseTypeId: number | null; evseId: number | null }>;
-    connectors: Array<{ evseId: number | null; tariffId: number | null }>;
+    connectors: Array<{
+      evseId: number | null;
+      tariffId: number | null;
+      powerType: string | null;
+      maximumVoltage: number | null;
+      maximumAmperage: number | null;
+      maximumPowerWatts: number | null;
+    }>;
   }>;
 }
 
@@ -87,26 +121,18 @@ export async function syncTariffToPaymentAction(
   tariffId: number,
   options?: { tenantIdOverride?: string },
 ): Promise<ActionResult<PaymentCatalogSyncResult[]>> {
-  return authedAction<PaymentCatalogSyncResult[]>(async (session) => {
+  return authedActionWithRoles<PaymentCatalogSyncResult[]>(SYNC_ROLES, async (session) => {
     // Platform staff may sync on behalf of a tenant (e.g. right after claiming
     // a charger for them); the override is re-validated in
-    // syncPaymentCatalogAction, but the Hasura reads here need it too.
-    let tenantId = session.user.tenantId || config.tenantId;
-    if (options?.tenantIdOverride && options.tenantIdOverride !== tenantId) {
-      const roles = session.user.roles ?? [];
-      if (!roles.includes('platform-admin') && !roles.includes('admin')) {
-        throw new Error('Only platform staff can sync on behalf of another tenant');
-      }
-      tenantId = options.tenantIdOverride;
-    }
+    // syncPaymentCatalogAction, but the Hasura reads here need it too. A
+    // session with no tenant and no override is refused -- never tenant "1".
+    const tenantId = resolveActingTenantId(session, options?.tenantIdOverride);
 
     const res = await fetch(config.apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(config.hasuraAdminSecret
-          ? { 'x-hasura-admin-secret': config.hasuraAdminSecret }
-          : {}),
+        ...(config.hasuraAdminSecret ? { 'x-hasura-admin-secret': config.hasuraAdminSecret } : {}),
       },
       body: JSON.stringify({
         query: TARIFF_PAYMENT_SYNC_QUERY,
@@ -155,6 +181,8 @@ export async function syncTariffToPaymentAction(
           ocppConnectionName: station.ocppConnectionName,
           evseId: ocppEvseId,
           tariff,
+          location: station.Location,
+          connector,
         });
       }
     }
@@ -174,7 +202,9 @@ export async function syncTariffToPaymentAction(
     const entries = buildCatalogSyncEntries(business, tariff, evses, `tenant-${tenantId}`);
 
     const result = await syncPaymentCatalogAction(entries, {
-      tenantIdOverride: options?.tenantIdOverride,
+      // Pass the resolved tenant explicitly so platform staff acting on their
+      // own home tenant resolve to the same tenant on the inner action.
+      tenantIdOverride: tenantId,
     });
     if (!result.success) {
       throw new Error(result.error);

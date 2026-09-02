@@ -118,7 +118,6 @@
       "description": "Enter your credentials to access the dashboard",
       "signin": "Sign in",
       "signingIn": "Signing in...",
-      "signup": "Sign up",
       "divider": "or",
       "invalidCredentials": "Invalid email or password",
       "fields": {
@@ -194,9 +193,7 @@
       "backHome": "Back to homepage"
     },
     "redirectingToLogin": "Redirecting to login...",
-    "checkingAuth": "Checking authentication...",
-    "redirectingToKeycloak": "Redirecting to Keycloak...",
-    "redirectingToKeycloakLogin": "Redirecting to Keycloak login..."
+    "checkingAuth": "Checking authentication..."
   },
   "actions": {
     "create": "Create",

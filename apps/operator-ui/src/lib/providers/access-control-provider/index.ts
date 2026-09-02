@@ -46,10 +46,11 @@ const ROLE_PERMISSIONS = {
 /**
  * Resources (or specific actions on them) reserved for Ivora platform staff.
  * Tenant users never see these, regardless of their UI permission tier.
- * Raw Keycloak roles are checked (not the collapsed admin/user tier), because
- * the tier can't distinguish a tenant admin from a platform admin. The legacy
- * 'admin' role also qualifies: it is only assigned to platform staff (and the
- * generic dev login), never to tenant users -- see keycloak/README.md.
+ * Raw session roles (from the Supabase JWT's app_metadata.csms.<env>.roles)
+ * are checked, not the collapsed admin/user tier, because the tier can't
+ * distinguish a tenant admin from a platform admin. The legacy 'admin' role
+ * also qualifies: it is only assigned to platform staff (and the generic dev
+ * login), never to tenant users -- see @lib/utils/csms-claims.
  */
 const PLATFORM_ROLES = ['platform-admin', 'platform-support', 'admin'];
 const PLATFORM_ONLY: Partial<Record<string, ActionType[]>> = {

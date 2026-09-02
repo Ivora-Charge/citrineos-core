@@ -18,18 +18,18 @@ const getConfig: () => {
   apiUrl: string;
   wsUrl: string;
   bannerMessage?: string;
-  citrineCoreUrl?: string;
+  citrineCoreUrl?: string; // What the BROWSER calls. Set to /api/core so it goes through the authenticated proxy (app/api/core/[...path]/route.ts).
+  citrineCoreInternalUrl?: string; // SERVER ONLY. Where the Next.js server reaches CitrineOS core (e.g. http://citrine:8080). Never the public URL.
   fileServer?: string;
   logoUrl?: string;
   metricsUrl?: string;
   adminEmail?: string;
   adminPassword?: string;
   authProvider: AuthProviderType;
-  keycloakUrl?: string; // The publicly accessible Keycloak URL that user browsers will be redirected to for login.
-  keycloakServerUrl?: string; // If your application server needs to use a different URL to reach Keycloak (e.g., an internal service URL in Kubernetes), set this. Otherwise, the server will use KEYCLOAK_URL.
-  keycloakRealm?: string;
-  keycloakClientId?: string;
-  keycloakClientSecret?: string;
+  supabaseUrl?: string; // Supabase project URL, e.g. https://<ref>.supabase.co
+  supabaseAnonKey?: string; // Publishable anon key, safe in the browser bundle.
+  supabaseServiceRoleKey?: string; // SERVER ONLY. Never expose to the browser.
+  csmsEnv?: string; // SERVER ONLY. Which subtree of app_metadata.csms this box reads: "test" or "prod".
   awsRegion?: string;
   awsAccessKeyId?: string;
   awsSecretAccessKey?: string;
@@ -45,6 +45,42 @@ const getConfig: () => {
 } = () => {
   const authProviderResult = AuthProviderTypeEnum.safeParse(process.env.NEXT_PUBLIC_AUTH_PROVIDER);
   const authProvider = authProviderResult.success ? authProviderResult.data : 'generic';
+
+  // NEXT_PUBLIC_* are inlined by `next build`; changing them in compose without
+  // rebuilding the image changes nothing the browser sees.
+
+  // Fail closed on a public box. The generic provider is a fail-open dev
+  // login (no real token, middleware disabled, Hasura admin secret handed to
+  // the browser), and a mistyped NEXT_PUBLIC_AUTH_PROVIDER silently falls back
+  // to it -- so a production server must refuse to start in that state.
+  // Likewise, Supabase claims are namespaced per environment
+  // (app_metadata.csms[CSMS_ENV]); without CSMS_ENV nobody could log in, and a
+  // wrong guess would read another environment's grants.
+  //
+  // Server only: NODE_ENV / CSMS_ENV are not in the browser bundle. Skipped
+  // during `next build` (NEXT_PHASE=phase-production-build), which runs with
+  // NODE_ENV=production but without the runtime environment.
+  if (
+    typeof window === 'undefined' &&
+    process.env.NODE_ENV === 'production' &&
+    process.env.NEXT_PHASE !== 'phase-production-build'
+  ) {
+    if (!process.env.NEXT_PUBLIC_AUTH_PROVIDER) {
+      throw new Error(
+        'NEXT_PUBLIC_AUTH_PROVIDER is unset in production; refusing to start with the fail-open generic provider',
+      );
+    }
+    if (authProvider === 'generic') {
+      throw new Error(
+        `Auth provider resolved to 'generic' in production (NEXT_PUBLIC_AUTH_PROVIDER=${process.env.NEXT_PUBLIC_AUTH_PROVIDER}); refusing to start`,
+      );
+    }
+    if (authProvider === 'supabase' && !process.env.CSMS_ENV) {
+      throw new Error(
+        'CSMS_ENV is unset in production; it selects the app_metadata.csms.<env> claims subtree this box trusts (test|prod)',
+      );
+    }
+  }
 
   return {
     appName: process.env.NEXT_PUBLIC_APP_NAME || 'Ivora Charge',
@@ -68,17 +104,17 @@ const getConfig: () => {
     apiUrl: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8090/v1/graphql',
     wsUrl: process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8090/v1/graphql',
     citrineCoreUrl: process.env.NEXT_PUBLIC_CITRINE_CORE_URL,
+    citrineCoreInternalUrl: process.env.CITRINE_CORE_INTERNAL_URL,
     fileServer: process.env.NEXT_PUBLIC_FILE_SERVER_URL,
     logoUrl: process.env.NEXT_PUBLIC_LOGO_URL,
     metricsUrl: process.env.NEXT_PUBLIC_METRICS_URL,
     adminEmail: process.env.NEXT_PUBLIC_ADMIN_EMAIL,
     adminPassword: process.env.ADMIN_PASSWORD,
     authProvider,
-    keycloakUrl: process.env.NEXT_PUBLIC_KEYCLOAK_URL,
-    keycloakServerUrl: process.env.KEYCLOAK_SERVER_URL,
-    keycloakRealm: process.env.KEYCLOAK_REALM,
-    keycloakClientId: process.env.KEYCLOAK_CLIENT_ID,
-    keycloakClientSecret: process.env.KEYCLOAK_CLIENT_SECRET,
+    supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    csmsEnv: process.env.CSMS_ENV,
     awsRegion: process.env.AWS_REGION || 'us-east-1',
     awsAccessKeyId: process.env.AWS_ACCESS_KEY_ID,
     awsSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,

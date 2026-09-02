@@ -3,8 +3,17 @@
 // SPDX-License-Identifier: Apache-2.0
 'use server';
 
-import { authedAction, type ActionResult } from '@lib/utils/action-guard';
+import {
+  authedActionWithRoles,
+  resolveActingTenantId,
+  type ActionResult,
+} from '@lib/utils/action-guard';
+import { MUTATING_ROLES, PLATFORM_ROLES } from '@lib/utils/csms-claims';
 import config from '@lib/utils/config';
+
+// Who may push to the payment catalog: tenant admins (own tenant) and platform
+// staff (any tenant, named explicitly). Read-only roles are refused.
+const SYNC_ROLES: readonly string[] = [...new Set([...MUTATING_ROLES, ...PLATFORM_ROLES])];
 
 // One operator -> location -> tariff -> evse -> connector chain to upsert.
 // Mirrors CatalogSyncRequest in citrineos-payment/schemas/catalog.py. tenant_id
@@ -19,6 +28,7 @@ export interface PaymentCatalogSyncEntry {
   city: string;
   state: string;
   country: string;
+  location_name?: string;
   station_id: string;
   ocpp_evse_id: number;
   evse_id: string;
@@ -33,6 +43,7 @@ export interface PaymentCatalogSyncEntry {
   power_type?: 'AC_1_PHASE' | 'AC_3_PHASE' | 'DC';
   max_voltage?: number;
   max_amperage?: number;
+  max_power_watts?: number;
 }
 
 export interface PaymentCatalogSyncResult {
@@ -53,7 +64,7 @@ export async function syncPaymentCatalogAction(
   entries: PaymentCatalogSyncEntry[],
   options?: { tenantIdOverride?: string },
 ): Promise<ActionResult<PaymentCatalogSyncResult[]>> {
-  return authedAction<PaymentCatalogSyncResult[]>(async (session) => {
+  return authedActionWithRoles<PaymentCatalogSyncResult[]>(SYNC_ROLES, async (session) => {
     const baseUrl = config.paymentServiceUrl;
     const secret = process.env.PAYMENT_CATALOG_SYNC_SECRET;
 
@@ -64,20 +75,12 @@ export async function syncPaymentCatalogAction(
       throw new Error('PAYMENT_CATALOG_SYNC_SECRET is not configured');
     }
 
-    // Prefer the authoritative tenant id from the session (Keycloak sets it).
-    // The generic dev auth provider does not populate it, so fall back to the
-    // configured default tenant -- mirrors useTenantId() on the client.
-    // Platform staff (who carry no tenant claim) may act on behalf of a
-    // specific tenant, e.g. when claiming a charger for them; tenant users
-    // can never override their own binding.
-    let tenantId = session.user.tenantId || config.tenantId;
-    if (options?.tenantIdOverride && options.tenantIdOverride !== tenantId) {
-      const roles = session.user.roles ?? [];
-      if (!roles.includes('platform-admin') && !roles.includes('admin')) {
-        throw new Error('Only platform staff can sync on behalf of another tenant');
-      }
-      tenantId = options.tenantIdOverride;
-    }
+    // The tenant comes from the validated session (Supabase claims). Tenant
+    // users are bound to their own tenant; platform staff may act on behalf
+    // of a specific tenant (e.g. when claiming a charger for them) by naming
+    // it. There is deliberately no fallback to config.tenantId: a session
+    // without a tenant and without an explicit platform override is refused.
+    const tenantId = resolveActingTenantId(session, options?.tenantIdOverride);
     const url = `${baseUrl.replace(/\/$/, '')}/api/catalog/sync`;
 
     const results: PaymentCatalogSyncResult[] = [];

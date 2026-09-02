@@ -3,43 +3,87 @@
 // SPDX-License-Identifier: Apache-2.0
 'use server';
 
-import { authedAction, type ActionResult } from '@lib/utils/action-guard';
+import { authedAction, ForbiddenError, type ActionResult } from '@lib/utils/action-guard';
+import { hasPlatformRole } from '@lib/utils/csms-claims';
+import config from '@lib/utils/config';
 import {
-  createUserWithRoles,
+  csmsClaimsOf,
+  findUserByEmail,
+  inviteUser,
   listUsersForTenant,
-  type KeycloakUser,
-} from '@lib/server/keycloak-admin';
+  writeCsmsClaims,
+  type SupabaseUser,
+} from '@lib/server/supabase-admin';
 import { audit } from '@lib/server/audit';
 
 // Roles a tenant admin may grant within their own tenant. Platform admins may
-// grant any of ALL_ROLES (including platform roles, with no tenant binding).
+// grant any of ALL_ROLES (including platform roles).
 const TENANT_GRANTABLE = ['tenant-admin', 'tenant-viewer'];
 const ALL_ROLES = ['platform-admin', 'platform-support', ...TENANT_GRANTABLE];
 
 const isPlatformAdmin = (roles: string[]) =>
   roles.includes('platform-admin') || roles.includes('admin');
 
+/** Which subtree of app_metadata.csms this box writes and reads. */
+function csmsEnv(): string {
+  const env = config.csmsEnv;
+  if (!env) throw new Error('CSMS_ENV is not configured');
+  return env;
+}
+
 export interface InviteUserInput {
   email: string;
-  firstName?: string;
-  lastName?: string;
   role: string;
-  /** Required for tenant-* roles; ignored for platform roles. */
+  /** Required for tenant-* roles; for platform roles it becomes the user's
+   * home tenant when given. */
   tenantId?: string;
 }
 
 export interface InviteUserResult {
+  /** The login: the email address. */
   username: string;
-  /** Shown once to the inviter; Keycloak forces a change on first login. */
-  tempPassword: string;
+  /** true when a Supabase invite email went out (new account); false when the
+   * address already had a Supabase account and only the claims were written. */
+  emailSent: boolean;
+}
+
+/** A tenant member as shown on the tenant page. */
+export interface TenantUser {
+  id: string;
+  email: string;
+  roles: string[];
+  tenantId?: string;
+  /** Has accepted the invite / confirmed the email (can sign in). */
+  confirmed: boolean;
+  invitedAt?: string | null;
+  lastSignInAt?: string | null;
+}
+
+function toTenantUser(user: SupabaseUser, env: string): TenantUser {
+  const claims = csmsClaimsOf(user, env);
+  return {
+    id: user.id,
+    email: user.email ?? '',
+    roles: claims?.roles ?? [],
+    tenantId: claims?.tenant_id,
+    confirmed: Boolean(user.email_confirmed_at || user.confirmed_at),
+    invitedAt: user.invited_at ?? null,
+    lastSignInAt: user.last_sign_in_at ?? null,
+  };
 }
 
 /**
- * Create a user in the ivora realm (multi-tenant rollout Phase 3).
+ * Invite a user into a tenant (docs/identity-consolidation-plan.md 2.4).
  *
  * platform-admin: may invite into any tenant and grant any role.
  * tenant-admin: may invite only into their own tenant and grant only
  * tenant-admin / tenant-viewer.
+ *
+ * If the email already has a Supabase account (analytics customers, staff),
+ * no invite is sent and only this environment's claims are written. Otherwise
+ * GoTrue sends its invite email whose link lands on analytics' set-password
+ * screen; the claims are written right after (the invite cannot set
+ * app_metadata itself).
  *
  * Every user also gets tenant-viewer: it is Hasura's default role, so it must
  * be in every token's allowed-roles (see the claims_map in the compose file).
@@ -48,68 +92,88 @@ export async function inviteUserAction(
   input: InviteUserInput,
 ): Promise<ActionResult<InviteUserResult>> {
   return authedAction<InviteUserResult>(async (session) => {
+    const env = csmsEnv();
     const callerRoles = session.user.roles ?? [];
     const platform = isPlatformAdmin(callerRoles);
 
     if (!ALL_ROLES.includes(input.role)) {
       throw new Error(`Unknown role: ${input.role}`);
     }
-    // The username IS the email (Keycloak). Validate here so a non-email value
-    // gets a clear message instead of the raw Keycloak admin API 400 JSON
-    // ("error-invalid-email") bubbling into the UI toast.
-    const email = (input.email ?? '').trim();
+    // The username IS the email. Validate here so a non-email value gets a
+    // clear message instead of the raw GoTrue 4xx bubbling into the UI toast.
+    const email = (input.email ?? '').trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       throw new Error('Enter a valid email address — it becomes the user’s login.');
     }
-    input = { ...input, email };
+    const targetTenantId = input.tenantId?.trim() || undefined;
+
     if (!platform) {
       if (!callerRoles.includes('tenant-admin')) {
-        throw new Error('Only platform or tenant admins can invite users');
+        throw new ForbiddenError('Only platform or tenant admins can invite users');
       }
       if (!TENANT_GRANTABLE.includes(input.role)) {
-        throw new Error('Tenant admins can only grant tenant roles');
+        throw new ForbiddenError('Tenant admins can only grant tenant roles');
       }
-      if (!session.user.tenantId || input.tenantId !== session.user.tenantId) {
-        throw new Error('Tenant admins can only invite users into their own tenant');
+      if (!session.user.tenantId || targetTenantId !== session.user.tenantId) {
+        throw new ForbiddenError('Tenant admins can only invite users into their own tenant');
       }
     }
 
     const isTenantRole = TENANT_GRANTABLE.includes(input.role);
-    if (isTenantRole && !input.tenantId) {
+    if (isTenantRole && !targetTenantId) {
       throw new Error('tenantId is required for tenant roles');
     }
 
-    const { tempPassword } = await createUserWithRoles({
-      email: input.email,
-      firstName: input.firstName,
-      lastName: input.lastName,
-      tenantId: isTenantRole ? input.tenantId : undefined,
-      roles: [...new Set([input.role, 'tenant-viewer'])],
-    });
+    const roles = [...new Set([input.role, 'tenant-viewer'])];
+    const claims = { roles, tenant_id: targetTenantId };
+
+    const existing = await findUserByEmail(email);
+    let userId: string;
+    let emailSent: boolean;
+    if (existing) {
+      // A tenant admin may not re-point (or downgrade) an account that already
+      // belongs to another tenant or to platform staff in this environment.
+      const current = csmsClaimsOf(existing, env);
+      if (
+        !platform &&
+        current &&
+        (hasPlatformRole(current.roles) || current.tenant_id !== targetTenantId)
+      ) {
+        throw new ForbiddenError(
+          'This email already has access under a different organisation — contact Ivora support.',
+        );
+      }
+      userId = existing.id;
+      emailSent = false;
+    } else {
+      const invited = await inviteUser(email);
+      userId = invited.id;
+      emailSent = true;
+    }
+    await writeCsmsClaims(userId, env, claims);
+
     await audit({
       actor: session.user.email ?? session.user.name ?? 'unknown',
       actorRoles: callerRoles,
-      tenantId: isTenantRole ? input.tenantId : undefined,
+      tenantId: isTenantRole ? targetTenantId : undefined,
       action: 'tenant.invite-user',
-      target: input.email,
-      detail: { role: input.role },
+      target: email,
+      detail: { role: input.role, env, emailSent, existingAccount: Boolean(existing) },
     });
-    return { username: input.email, tempPassword };
+    return { username: email, emailSent };
   });
 }
 
-/** List the Keycloak users bound to a tenant. Platform staff may inspect any
- * tenant; tenant admins only their own. */
-export async function listTenantUsersAction(
-  tenantId: string,
-): Promise<ActionResult<KeycloakUser[]>> {
-  return authedAction<KeycloakUser[]>(async (session) => {
+/** List the users whose claims bind them to a tenant. Platform staff may
+ * inspect any tenant; tenant admins only their own. */
+export async function listTenantUsersAction(tenantId: string): Promise<ActionResult<TenantUser[]>> {
+  return authedAction<TenantUser[]>(async (session) => {
+    const env = csmsEnv();
     const callerRoles = session.user.roles ?? [];
-    const platform =
-      isPlatformAdmin(callerRoles) || callerRoles.includes('platform-support');
-    if (!platform && session.user.tenantId !== tenantId) {
-      throw new Error('Not allowed to inspect other tenants');
+    if (!hasPlatformRole(callerRoles) && session.user.tenantId !== tenantId) {
+      throw new ForbiddenError('Not allowed to inspect other tenants');
     }
-    return listUsersForTenant(tenantId);
+    const users = await listUsersForTenant(env, tenantId);
+    return users.map((u) => toTenantUser(u, env)).sort((a, b) => a.email.localeCompare(b.email));
   });
 }

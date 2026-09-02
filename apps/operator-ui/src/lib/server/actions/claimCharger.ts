@@ -3,7 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0
 'use server';
 
-import { authedAction, type ActionResult } from '@lib/utils/action-guard';
+import {
+  authedAction,
+  authedActionWithRoles,
+  resolveActingTenantId,
+  type ActionResult,
+} from '@lib/utils/action-guard';
+import { MUTATING_ROLES, PLATFORM_ROLES } from '@lib/utils/csms-claims';
 import config from '@lib/utils/config';
 import { hasuraAdmin } from '@lib/server/hasura';
 import { audit } from '@lib/server/audit';
@@ -27,8 +33,24 @@ import { syncTariffToPaymentAction } from './syncTariffToPayment';
 
 const INVENTORY_TENANT_NAME = 'Ivora Inventory';
 
+// Who may claim: tenant admins (into their own tenant) and platform staff
+// (into any tenant, named via targetTenantId).
+const CLAIM_ROLES: readonly string[] = [...new Set([...MUTATING_ROLES, ...PLATFORM_ROLES])];
+
 const isPlatformAdmin = (roles: string[]) =>
   roles.includes('platform-admin') || roles.includes('admin');
+
+/** Server-to-server base URL of CitrineOS core. The public URL
+ * (NEXT_PUBLIC_CITRINE_CORE_URL) is what the browser calls -- through the
+ * authenticated /api/core proxy -- and must never be used from the server:
+ * it would go out to the edge and back, and it is what the WAF allow-list is
+ * being removed for. Checked up front so a misconfigured box fails before
+ * any row is moved. */
+function coreInternalUrl(): string {
+  const base = config.citrineCoreInternalUrl;
+  if (!base) throw new Error('CITRINE_CORE_INTERNAL_URL is not configured');
+  return base.replace(/\/$/, '');
+}
 
 /** Drop the charger's live OCPP connection so it reconnects. CitrineOS
  * resolves a station's tenant when the websocket is established, so after a
@@ -39,11 +61,10 @@ const isPlatformAdmin = (roles: string[]) =>
  * an offline charger has no connection to drop and reconnects correctly on
  * its own. */
 async function dropStationConnection(stationName: string, oldTenantId: number): Promise<void> {
-  const base = config.citrineCoreUrl;
-  if (!base) return;
+  const base = coreInternalUrl();
   try {
     const res = await fetch(
-      `${base.replace(/\/$/, '')}/data/ocpprouter/connection` +
+      `${base}/data/ocpprouter/connection` +
         `?ocppConnectionName=${encodeURIComponent(stationName)}&tenantId=${oldTenantId}`,
       { method: 'DELETE', cache: 'no-store' },
     );
@@ -180,22 +201,22 @@ export async function claimChargerAction(input: {
   targetTenantId?: number;
   locationId?: number;
 }): Promise<ActionResult<ClaimResult>> {
-  return authedAction<ClaimResult>(async (session) => {
+  return authedActionWithRoles<ClaimResult>(CLAIM_ROLES, async (session) => {
     const roles = session.user.roles ?? [];
-    const platform = isPlatformAdmin(roles);
-    if (!platform && !roles.includes('tenant-admin')) {
-      throw new Error('Only tenant or platform admins can claim chargers');
-    }
+    // Fail before touching anything if the server cannot reach core.
+    coreInternalUrl();
 
-    let tenantId: number;
-    if (platform) {
-      tenantId = input.targetTenantId ?? Number(session.user.tenantId || config.tenantId);
-    } else {
-      tenantId = Number(session.user.tenantId);
-      if (!tenantId) throw new Error('Session has no tenant');
-      if (input.targetTenantId && input.targetTenantId !== tenantId) {
-        throw new Error('Tenant admins can only claim into their own tenant');
-      }
+    // Tenant users claim into their own tenant (a differing targetTenantId is
+    // refused); platform staff must name the target tenant or have a home
+    // tenant. No fallback to config.tenantId.
+    const tenantId = Number(
+      resolveActingTenantId(
+        session,
+        input.targetTenantId != null ? String(input.targetTenantId) : undefined,
+      ),
+    );
+    if (!Number.isInteger(tenantId) || tenantId <= 0) {
+      throw new Error('Invalid tenant id');
     }
 
     const serial = input.serial.trim();
@@ -275,9 +296,9 @@ export async function claimChargerAction(input: {
     );
     for (const c of tariffs.Connectors) {
       if (c.tariffId) {
-        await syncTariffToPaymentAction(c.tariffId, {
-          tenantIdOverride: platform ? String(tenantId) : undefined,
-        });
+        // Always pass the resolved tenant: for tenant users it equals their
+        // own tenant (anything else is refused there too).
+        await syncTariffToPaymentAction(c.tariffId, { tenantIdOverride: String(tenantId) });
       }
     }
 
@@ -309,6 +330,8 @@ export async function moveToInventoryAction(
     if (!isPlatformAdmin(roles)) {
       throw new Error('Only platform admins can move chargers to inventory');
     }
+    // Fail before touching anything if the server cannot reach core.
+    coreInternalUrl();
 
     const data = await hasuraAdmin<{ ChargingStations: any[] }>(
       `query($name: String!) {
@@ -359,7 +382,16 @@ export async function moveToInventoryAction(
 
 /** List the chargers currently in inventory (platform staff only). */
 export async function listInventoryAction(): Promise<
-  ActionResult<Array<{ id: number; ocppConnectionName: string; serial: string | null; vendor: string | null; model: string | null; isOnline: boolean }>>
+  ActionResult<
+    Array<{
+      id: number;
+      ocppConnectionName: string;
+      serial: string | null;
+      vendor: string | null;
+      model: string | null;
+      isOnline: boolean;
+    }>
+  >
 > {
   return authedAction(async (session) => {
     const roles = session.user.roles ?? [];

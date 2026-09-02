@@ -118,7 +118,6 @@
       "description": "Insira suas credenciais para acessar o painel",
       "signin": "Entrar",
       "signingIn": "Entrando...",
-      "signup": "Cadastrar-se",
       "divider": "ou",
       "invalidCredentials": "E-mail ou senha inválidos",
       "fields": {
@@ -194,9 +193,7 @@
       "backHome": "Voltar à página inicial"
     },
     "redirectingToLogin": "Redirecionando para o login...",
-    "checkingAuth": "Verificando autenticação...",
-    "redirectingToKeycloak": "Redirecionando para o Keycloak...",
-    "redirectingToKeycloakLogin": "Redirecionando para o login do Keycloak..."
+    "checkingAuth": "Verificando autenticação..."
   },
   "actions": {
     "create": "Criar",

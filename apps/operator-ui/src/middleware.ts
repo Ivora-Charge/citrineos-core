@@ -12,11 +12,13 @@ import { NextResponse } from 'next/server';
  * Uses next-auth/jwt getToken() to validate the encrypted session cookie on
  * every matched request before any page renders or server action executes.
  * Unauthenticated requests are redirected to /login. Requests whose token
- * refresh failed (Keycloak session ended) are redirected with an error param.
+ * refresh failed (Supabase session ended or claims revoked) are redirected
+ * with an error param.
  *
- * Protected: all routes except /login, /signup (public self-signup +
- * email-verification), /api/auth/**, /api/health, and Next.js internal
- * paths / static assets (see matcher below).
+ * Protected: all routes except /login, /api/auth/**, /api/health, and Next.js
+ * internal paths / static assets (see matcher below). /api/core/** (the core
+ * REST proxy) is covered too, as defense in depth: the route handler performs
+ * its own session, role and tenant checks.
  */
 export async function middleware(request: NextRequest) {
   const token = await getToken({
@@ -39,7 +41,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Token refresh failed (e.g. Keycloak SSO session expired) — force re-login
+  // Token refresh failed (Supabase refresh token rejected, or the refreshed
+  // claims no longer validate) — force re-login
   if (token.error === 'RefreshAccessTokenError') {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('error', 'SessionExpired');
@@ -61,6 +64,6 @@ export const config = {
      *   /favicon.ico            – browser favicon
      *   /<file>.<ext>           – any root-level static file (svg, png, etc.)
      */
-    '/((?!login|signup|api/auth|api/health|_next/static|_next/image|favicon\\.ico|[^/]+\\.[^/]+$).*)',
+    '/((?!login|api/auth|api/health|_next/static|_next/image|favicon\\.ico|[^/]+\\.[^/]+$).*)',
   ],
 };

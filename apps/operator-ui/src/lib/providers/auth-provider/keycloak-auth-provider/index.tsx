@@ -3,22 +3,30 @@
 // SPDX-License-Identifier: Apache-2.0
 'use client';
 
+// Runtime auth provider for the Supabase mode. It reads the NextAuth session
+// that app/api/auth/[...nextauth]/options.ts builds from the Supabase JWT
+// (accessToken, roles, tenantId). The file and the exported type names keep
+// their historical Keycloak spelling only for import stability
+// (useTenantId.tsx and authenticated-layout/index.tsx import
+// KeycloakUserIdentity); Keycloak itself was torn down.
+
 import { type AuthenticationContextProvider, type User } from '@/lib/utils/access.types';
 import config from '@/lib/utils/config';
 import { getSession, signIn, signOut } from 'next-auth/react';
-import { type AuthProvider, useTranslate } from '@refinedev/core';
+import { type AuthProvider } from '@refinedev/core';
 import { HasuraHeader, HasuraRole } from '@lib/utils/hasura.types';
-import React, { useEffect } from 'react';
 import { parseJwt, getTokenClaim } from '@lib/utils/jwt';
+import { GenericLoginPage } from '@lib/providers/auth-provider/generic-auth-provider';
 
 export enum KeycloakRole {
   // Legacy roles (pre multi-tenant rollout). ADMIN doubles as Hasura's
   // built-in all-access role, so it is assigned to platform staff only.
   ADMIN = 'admin',
   USER = 'user',
-  // Multi-tenant rollout roles (client roles on citrineos-ui; see
-  // keycloak/README.md). Tenant users carry ONLY tenant-* roles so they can
-  // never claim the Hasura admin role.
+  // Multi-tenant roles, carried in the Supabase JWT at
+  // app_metadata.csms[CSMS_ENV].roles (see @lib/utils/csms-claims). Tenant
+  // users carry ONLY tenant-* roles so they can never claim the Hasura admin
+  // role.
   PLATFORM_ADMIN = 'platform-admin',
   PLATFORM_SUPPORT = 'platform-support',
   TENANT_ADMIN = 'tenant-admin',
@@ -26,7 +34,7 @@ export enum KeycloakRole {
 }
 
 /**
- * Extended user identity with Keycloak-specific fields
+ * Extended user identity with the CSMS-specific fields the session carries.
  */
 export interface KeycloakUserIdentity extends User {
   tenantId?: string;
@@ -40,26 +48,6 @@ export interface KeycloakPermissions {
 }
 
 const HASURA_CLAIM = config.hasuraClaim!;
-
-/**
- * Keycloak Login Page Component
- * Automatically redirects to Keycloak login
- */
-const KeycloakLoginPage: React.FC = () => {
-  const translate = useTranslate();
-  useEffect(() => {
-    signIn('keycloak', { callbackUrl: '/overview' });
-  }, []);
-
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
-      <div className="text-center">
-        <h2 className="text-xl font-semibold mb-2">{translate('pages.redirectingToKeycloak')}</h2>
-        <p className="text-gray-600">{translate('pages.redirectingToKeycloakLogin')}</p>
-      </div>
-    </div>
-  );
-};
 
 export const createKeycloakAuthProvider = (): AuthProvider & AuthenticationContextProvider => {
   const getPermissions = async (): Promise<KeycloakPermissions> => {
@@ -115,8 +103,8 @@ export const createKeycloakAuthProvider = (): AuthProvider & AuthenticationConte
     const tokenParsed = parseJwt(token);
 
     // Set Hasura role. The role sent here must be in the token's
-    // x-hasura-allowed-roles (Hasura claims_map maps them from the
-    // citrineos-ui client roles), so pick the strongest role the user
+    // x-hasura-allowed-roles (Hasura's claims_map maps them from
+    // app_metadata.csms.<env>.roles), so pick the strongest role the user
     // actually holds. Tenant users never hold ADMIN, so they can only ever
     // select their tenant-scoped roles.
     const hasuraClaims = getTokenClaim(tokenParsed, HASURA_CLAIM);
@@ -137,10 +125,12 @@ export const createKeycloakAuthProvider = (): AuthProvider & AuthenticationConte
       }
     }
 
-    // Set Hasura tenant ID
-    const tenantId = tokenParsed.tenantId;
+    // Tenant id as the session carries it (validated server-side in
+    // options.ts). Hasura in JWT mode takes the tenant from the token's
+    // claims_map, so this header is informational.
+    const tenantId = (session.user as any)?.tenantId;
     if (tenantId) {
-      hasuraHeaders.set(HasuraHeader.X_HASURA_TENANT_ID, tenantId);
+      hasuraHeaders.set(HasuraHeader.X_HASURA_TENANT_ID, String(tenantId));
     }
 
     return hasuraHeaders;
@@ -152,31 +142,30 @@ export const createKeycloakAuthProvider = (): AuthProvider & AuthenticationConte
   };
 
   return {
-    login: async ({ redirectTo }) => {
-      await signIn('keycloak', { callbackUrl: redirectTo || '/overview' });
-      return { success: true };
+    login: async ({ redirectTo, email, password }: any = {}) => {
+      // Supabase is a CredentialsProvider -- there is no IdP to redirect the
+      // browser to -- so it signs in with the submitted credentials. The
+      // provider id here MUST match what options.ts registers: naming a
+      // provider that is not registered makes signIn() fail and bounce back
+      // to /login, which calls login() again. That is an infinite redirect
+      // loop with no form ever rendered.
+      const result = await signIn('supabase', {
+        username: email,
+        password,
+        redirect: false,
+      });
+      if (!result || result.error) {
+        return {
+          success: false,
+          error: { name: 'LoginError', message: 'Invalid email or password' },
+        };
+      }
+      return { success: true, redirectTo: redirectTo || '/overview' };
     },
     logout: async ({ redirectTo }) => {
-      const session = await getSession();
-      const idToken = (session as any)?.idToken;
-      const keycloakLogoutUrl = (session as any)?.keycloakLogoutUrl;
-
-      // Clear the NextAuth session cookie without triggering a redirect
+      // Supabase has no browser-side SSO cookie to clear: removing the
+      // NextAuth session cookie IS the logout.
       await signOut({ redirect: false });
-
-      // Redirect the browser to Keycloak's end-session endpoint so it can
-      // clear its own SSO cookie. Without this, Keycloak silently re-authenticates
-      // the user on the next check because the browser-side SSO session is still live.
-      if (idToken && keycloakLogoutUrl) {
-        const postLogoutUri = `${window.location.origin}${redirectTo || '/login'}`;
-        const params = new URLSearchParams({
-          id_token_hint: idToken,
-          post_logout_redirect_uri: postLogoutUri,
-        });
-        window.location.href = `${keycloakLogoutUrl}?${params.toString()}`;
-        return { success: true };
-      }
-
       return { success: true, redirectTo: redirectTo || '/login' };
     },
     check: async () => {
@@ -220,6 +209,8 @@ export const createKeycloakAuthProvider = (): AuthProvider & AuthenticationConte
     getUserRole,
     getHasuraHeaders,
     getInitialized: async (): Promise<boolean> => true,
-    getLoginPage: () => KeycloakLoginPage,
+    // Supabase signs in with credentials, so it uses the same form as the
+    // generic provider rather than an IdP redirect splash.
+    getLoginPage: () => GenericLoginPage,
   };
 };

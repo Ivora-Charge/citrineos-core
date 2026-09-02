@@ -7,7 +7,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { CanAccess, useOne } from '@refinedev/core';
 import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { ChevronLeft, Copy, UserPlus } from 'lucide-react';
+import { ChevronLeft, UserPlus } from 'lucide-react';
 
 import { Button } from '@lib/client/components/ui/button';
 import { Card, CardContent, CardHeader } from '@lib/client/components/ui/card';
@@ -25,8 +25,9 @@ import { TENANT_GET_QUERY } from '@lib/queries/tenants';
 import {
   inviteUserAction,
   listTenantUsersAction,
+  type InviteUserResult,
+  type TenantUser,
 } from '@lib/server/actions/tenantUsers';
-import type { KeycloakUser } from '@lib/server/keycloak-admin';
 import { heading2Style, heading3Style, pageMargin } from '@lib/client/styles/page';
 import { cardHeaderFlex } from '@lib/client/styles/card';
 import { buttonIconSize } from '@lib/client/styles/icon';
@@ -36,8 +37,9 @@ const INVITE_ROLES = [
   { value: 'tenant-viewer', label: 'Tenant viewer (read-only)' },
 ];
 
-/** Platform-staff page: one tenant's profile + its Keycloak users, with
- * invite (create-with-temp-password) support. */
+/** Platform-staff page: one tenant's profile + the Supabase users whose CSMS
+ * claims bind them to it, with invite support (Supabase invite email; the
+ * user sets a password on analytics.ivoracharge.com, then signs in here). */
 export const TenantDetail = () => {
   const { id } = useParams<{ id: string }>();
   const { back } = useRouter();
@@ -51,7 +53,7 @@ export const TenantDetail = () => {
   });
   const tenant = tenantData?.data;
 
-  const [users, setUsers] = useState<KeycloakUser[] | null>(null);
+  const [users, setUsers] = useState<TenantUser[] | null>(null);
   const [usersError, setUsersError] = useState<string | null>(null);
   const loadUsers = useCallback(async () => {
     const res = await listTenantUsersAction(String(id));
@@ -70,7 +72,7 @@ export const TenantDetail = () => {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('tenant-admin');
   const [inviting, setInviting] = useState(false);
-  const [issued, setIssued] = useState<{ username: string; tempPassword: string } | null>(null);
+  const [issued, setIssued] = useState<InviteUserResult | null>(null);
 
   const invite = async () => {
     if (!email.trim()) {
@@ -167,25 +169,23 @@ export const TenantDetail = () => {
                 </Select>
                 <div className="flex justify-end">
                   <Button onClick={invite} disabled={inviting}>
-                    Create user
+                    Send invite
                   </Button>
                 </div>
                 {issued && (
                   <div className="text-sm bg-accent/40 rounded p-3">
-                    <p>
-                      Temporary password for <b>{issued.username}</b> (they must change it at
-                      first login — copy it now, it is not stored):
-                    </p>
-                    <p className="font-mono flex items-center gap-2 mt-1">
-                      {issued.tempPassword}
-                      <Copy
-                        className="size-4 cursor-pointer"
-                        onClick={() => {
-                          void navigator.clipboard.writeText(issued.tempPassword);
-                          toast.success('Copied');
-                        }}
-                      />
-                    </p>
+                    {issued.emailSent ? (
+                      <p>
+                        Invitation emailed to <b>{issued.username}</b>. They set a password at
+                        analytics.ivoracharge.com, then sign in here.
+                      </p>
+                    ) : (
+                      <p>
+                        <b>{issued.username}</b> already had an Ivora account, so no email was sent
+                        — access was granted directly. They sign in here with their existing
+                        password (set or reset at analytics.ivoracharge.com).
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -201,21 +201,21 @@ export const TenantDetail = () => {
               <table className="w-full text-sm mt-2">
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
-                    <th className="py-2 pr-4">User</th>
                     <th className="py-2 pr-4">Email</th>
                     <th className="py-2 pr-4">Roles</th>
-                    <th className="py-2">Enabled</th>
+                    <th className="py-2 pr-4">Status</th>
+                    <th className="py-2">Last sign-in</th>
                   </tr>
                 </thead>
                 <tbody>
                   {users.map((u) => (
                     <tr key={u.id} className="border-b">
-                      <td className="py-2 pr-4">{u.username}</td>
                       <td className="py-2 pr-4">{u.email || '—'}</td>
-                      <td className="py-2 pr-4 font-mono">
-                        {(u.clientRoles ?? []).join(', ') || '—'}
+                      <td className="py-2 pr-4 font-mono">{u.roles.join(', ') || '—'}</td>
+                      <td className="py-2 pr-4">{u.confirmed ? 'active' : 'invited'}</td>
+                      <td className="py-2">
+                        {u.lastSignInAt ? new Date(u.lastSignInAt).toLocaleString() : '—'}
                       </td>
-                      <td className="py-2">{u.enabled ? 'yes' : 'no'}</td>
                     </tr>
                   ))}
                 </tbody>

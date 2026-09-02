@@ -302,3 +302,7 @@ export const createGenericAuthProvider = (
     getLoginPage: () => LoginPage,
   };
 };
+
+// Reused by the Supabase auth path: Supabase is a CredentialsProvider, so it
+// needs this email/password form rather than an IdP redirect.
+export { LoginPage as GenericLoginPage };

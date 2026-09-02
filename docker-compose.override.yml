@@ -1,10 +1,8 @@
-# Local-only override: the published ghcr.io operator-ui image is not publicly
-# pullable, so build the UI from local source instead (same Dockerfile that
-# docker-compose.local.yml uses). Not for commit upstream.
+# Local-only override for the LAN test stack (csms-test). Not for commit upstream.
+# Secrets live in the gitignored ./.env and are interpolated here as ${VAR}; nothing
+# secret may be a literal in this tracked file (history of this file leaked live
+# values in 2026; see docs/identity-consolidation-plan.md section 2).
 services:
-  # Build the server from local source too: the published :latest image lags the
-  # repo (missing migrations >= 20260427, e.g. ocppConnectionName rename) and the
-  # locally-built operator UI queries the newer schema.
   citrine:
     image: citrineos-server:local
     pull_policy: never
@@ -12,131 +10,108 @@ services:
       context: .
       dockerfile: ./apps/ocpp-server/deploy.Dockerfile
     # Sequelize's default pool of 5 crashes the server under ~8 concurrent
-    # charging sessions (pressure test 2026-07-06: acquire-timeout storm ->
-    # process death -> fleet-wide disconnect). 30 rides out fleet bursts.
-    # Mirrors deploy/docker-compose.yml.
+    # charging sessions (pressure test 2026-07-06). Mirrors deploy/docker-compose.yml.
     environment:
       BOOTSTRAP_CITRINEOS_DATABASE_POOL_MAX: "30"
       BOOTSTRAP_CITRINEOS_DATABASE_POOL_MIN: "5"
       BOOTSTRAP_CITRINEOS_DATABASE_POOL_ACQUIRE: "30000"
+    # Everything on loopback: host nginx proxies 8080 (core REST), 8081 (OCPP
+    # wss) and the UI; 8082-8083/8443-8444 are the SP1/SP2 listeners (fronted by
+    # nginx in Phase 4.6); 9229 is the Node inspector port.
+    ports: !override
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8081:8081"
+      - "127.0.0.1:8082:8082"
+      - "127.0.0.1:8083:8083"
+      - "127.0.0.1:8443:8443"
+      - "127.0.0.1:8444:8444"
+      - "127.0.0.1:9229:9229"
+
+  citrineos-ocpi:
+    ports: !override
+      - "127.0.0.1:8085:8085"
+
+  amqp-broker:
+    ports: !override
+      - "127.0.0.1:15672:15672"
+      - "127.0.0.1:5672:5672"
+
+  ocpp-db:
+    ports: !override
+      - "127.0.0.1:5432:5432"
+
+  minio:
+    ports: !override
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
 
   # Hasura lockdown (multi-tenant rollout Phase 2): admin secret for server-side
-  # privileged access, JWT mode against the ivora Keycloak realm for everyone
-  # else. claims_map derives the Hasura session from the plain Keycloak token:
-  # allowed roles from the citrineos-ui client roles, tenant from the tenant_id
-  # user attribute. No unauthorized role => anonymous requests are rejected.
+  # privileged access, JWT mode against Supabase Auth for everyone else.
+  # claims_map reads this box's OWN subtree of the per-environment claims
+  # (app_metadata.csms.test.*), so a grant written for production never applies
+  # here and vice versa; see docs/identity-consolidation-plan.md 2.1.
   # ($$ = compose-escaped literal $ in the JSONPath expressions.)
-  # Row-level permissions live in apps/ocpp-server/hasura-metadata (re-applied from
-  # the mounted dir on every container start); derive them with
-  # hasura/apply-tenancy-permissions.py.
+  # Row-level permissions live in apps/ocpp-server/hasura-metadata (re-applied
+  # from the mounted dir on every container start).
   graphql-engine:
+    ports: !override
+      - "127.0.0.1:8090:8080"
     environment:
-      HASURA_GRAPHQL_ADMIN_SECRET: "11b7e5994bac687366949358fa4308624a3808a24321ef4d"
-      HASURA_GRAPHQL_JWT_SECRET: '{"jwk_url":"http://keycloak:8180/auth/realms/ivora/protocol/openid-connect/certs","issuer":"https://csms-test.ivoracharge.com/auth/realms/ivora","claims_map":{"x-hasura-allowed-roles":{"path":"$$.resource_access.citrineos-ui.roles"},"x-hasura-default-role":"tenant-viewer","x-hasura-user-id":{"path":"$$.sub"},"x-hasura-tenant-id":{"path":"$$.tenant_id","default":""}}}'
-
-  # Identity provider for the operator UI (and, in Phase 2, Hasura JWT auth).
-  # Realm `ivora` is imported declaratively from ./keycloak/ivora-realm.json on
-  # first boot; run ./keycloak/bootstrap.sh once afterwards to allow the
-  # unmanaged tenant_id user attribute (Keycloak >=24 strips it otherwise).
-  # Public URL: https://csms-test.ivoracharge.com/auth (nginx proxies /auth/ ->
-  # 127.0.0.1:8180; see setup-scripts/setup_nginx_csms_ssl.sh in the parent
-  # repo). The fixed --hostname keeps token issuers on the public URL even for
-  # backchannel calls from the UI container (http://keycloak:8180/auth).
-  keycloak:
-    image: quay.io/keycloak/keycloak:26.0
-    command:
-      - start-dev
-      - --http-port=8180
-      - --http-relative-path=/auth
-      - --hostname=https://csms-test.ivoracharge.com/auth
-      - --proxy-headers=xforwarded
-      - --import-realm
-    environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: "Zrx3Oa2mtXLFd8sbFOYh"
-    ports:
-      - 8180:8180
-    volumes:
-      - keycloak-data:/opt/keycloak/data
-      - ./keycloak:/opt/keycloak/data/import:ro
-      # Custom login theme (adds the /signup link); realm loginTheme=ivora is
-      # set in ivora-realm.json (fresh installs) and asserted by bootstrap.sh.
-      - ./keycloak/themes/ivora:/opt/keycloak/themes/ivora:ro
+      HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_GRAPHQL_ADMIN_SECRET:?missing from citrineos-core/.env}
+      HASURA_GRAPHQL_ENABLE_CONSOLE: "false"
+      HASURA_GRAPHQL_DEV_MODE: "false"
+      HASURA_GRAPHQL_JWT_SECRET: '{"jwk_url":"https://uoatfgdxafvetninytuu.supabase.co/auth/v1/.well-known/jwks.json","issuer":"https://uoatfgdxafvetninytuu.supabase.co/auth/v1","audience":"authenticated","claims_map":{"x-hasura-allowed-roles":{"path":"$$.app_metadata.csms.test.roles"},"x-hasura-default-role":"tenant-viewer","x-hasura-user-id":{"path":"$$.sub"},"x-hasura-tenant-id":{"path":"$$.app_metadata.csms.test.tenant_id","default":""}}}'
 
   citrine-ui:
     image: citrineos-operator-ui:local
     pull_policy: never
+    ports: !override
+      - "127.0.0.1:3000:3000"
     extra_hosts:
-      # Resolves to this container's bridge gateway regardless of subnet;
-      # lets the server reach the host-run payment uvicorn on :9010.
+      # Lets the server reach the host-run payment uvicorn on :9010 regardless
+      # of the compose subnet.
       - 'host.docker.internal:host-gateway'
     build:
       context: .
       dockerfile: apps/operator-ui/Dockerfile
       args:
-        # Baked into the client bundle at build time (see Dockerfile). The
-        # browser hits these same-origin paths, which nginx proxies to Hasura
-        # (:8090) and core (:8080). Same origin => no CORS.
+        # Baked into the client bundle at build time (see Dockerfile). Same-origin
+        # paths that nginx proxies to Hasura; core REST is reached only through
+        # the session- and role-gated Next.js route handler /api/core.
         NEXT_PUBLIC_API_URL: https://csms-test.ivoracharge.com/hasura/v1/graphql
         NEXT_PUBLIC_WS_URL: wss://csms-test.ivoracharge.com/hasura/v1/graphql
-        NEXT_PUBLIC_CITRINE_CORE_URL: https://csms-test.ivoracharge.com/core-api
-        # Payment service base URL used (server-side) by the catalog sync action.
-        # host.docker.internal is pinned to the bridge gateway via extra_hosts
-        # (host-gateway) -> host:9010 (payment service); a literal gateway IP
-        # broke when the compose network was recreated on a new subnet
-        # (172.18 -> 172.20, overview hung on payment calls). NEXT_PUBLIC_* must
-        # be a build arg so Next inlines it. Public alt: https://payment-test.ivoracharge.com
+        NEXT_PUBLIC_CITRINE_CORE_URL: /api/core
         NEXT_PUBLIC_PAYMENT_SERVICE_URL: http://host.docker.internal:9010
-        # Keycloak login (multi-tenant rollout Phase 1). Both are inlined into
-        # the client bundle: the auth provider choice and the public URL the
-        # browser is redirected to for login.
-        NEXT_PUBLIC_AUTH_PROVIDER: keycloak
-        NEXT_PUBLIC_KEYCLOAK_URL: https://csms-test.ivoracharge.com/auth
+        NEXT_PUBLIC_AUTH_PROVIDER: supabase
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?missing from citrineos-core/.env}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?missing from citrineos-core/.env}
     environment:
-      # Server-only shared secret for /api/catalog/sync (read at runtime by the
-      # syncPaymentCatalog server action). Must match the payment service's
-      # PAYMENT_CATALOG_SYNC_SECRET. Never baked into the client bundle.
-      PAYMENT_CATALOG_SYNC_SECRET: "e2e-test-secret"
+      # Which subtree of app_metadata.csms this box reads (server-only).
+      CSMS_ENV: ${CSMS_ENV:?missing from citrineos-core/.env}
+      # Server-side calls to core never traverse the public edge.
+      CITRINE_CORE_INTERNAL_URL: http://citrine:8080
+      # Server-only shared secret for the payment catalog/connect/stats endpoints.
+      PAYMENT_CATALOG_SYNC_SECRET: ${PAYMENT_CATALOG_SYNC_SECRET:?missing from citrineos-core/.env}
       NEXT_PUBLIC_PAYMENT_SERVICE_URL: http://host.docker.internal:9010
-      # Keycloak login (multi-tenant rollout Phase 1). The browser uses the
-      # public /auth URL; this container reaches Keycloak directly over the
-      # compose network for token/userinfo/jwks calls.
-      NEXT_PUBLIC_AUTH_PROVIDER: keycloak
-      NEXT_PUBLIC_KEYCLOAK_URL: https://csms-test.ivoracharge.com/auth
-      KEYCLOAK_SERVER_URL: http://keycloak:8180/auth
-      KEYCLOAK_REALM: ivora
-      KEYCLOAK_CLIENT_ID: citrineos-ui
-      KEYCLOAK_CLIENT_SECRET: "f21744f52399128c0358c4fe2f45dfb176494342adc1ed2e"
-      # Server-side privileged Hasura access (syncTariffToPayment etc.). With
-      # AUTH_PROVIDER=keycloak this secret is never handed to the browser --
-      # getHasuraAdminSecretAction returns empty and the client authenticates
-      # with its own Bearer token + x-hasura-role instead.
-      HASURA_ADMIN_SECRET: "11b7e5994bac687366949358fa4308624a3808a24321ef4d"
-      # Keycloak Admin API credentials (server-only), used by the tenant user
-      # invite/list server actions (Phase 3).
-      KEYCLOAK_ADMIN_USER: admin
-      KEYCLOAK_ADMIN_PASSWORD: "Zrx3Oa2mtXLFd8sbFOYh"
-      # Generic auth provider credentials (unused while AUTH_PROVIDER=keycloak;
-      # kept for quick local fallback)
-      NEXT_PUBLIC_ADMIN_EMAIL: admin@citrineos.com
-      ADMIN_PASSWORD: "CitrineOS!"
-      NEXTAUTH_SECRET: "local-dev-secret-2b1fc16ee76818bf"
+      NEXT_PUBLIC_AUTH_PROVIDER: supabase
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      # Server-only: user invites and claims writes (GoTrue admin API).
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?missing from citrineos-core/.env}
+      # Invites land on the analytics set-password screen (Supabase Site URL).
+      ANALYTICS_URL: https://analytics.ivoracharge.com
+      # Server-side privileged Hasura access (syncTariffToPayment etc.). Never
+      # handed to the browser under the supabase provider.
+      HASURA_ADMIN_SECRET: ${HASURA_GRAPHQL_ADMIN_SECRET}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?missing from citrineos-core/.env}
       # Must be the public URL or NextAuth callbacks/cookies break.
       NEXTAUTH_URL: https://csms-test.ivoracharge.com
-      # Also provided at runtime for any server-side reads of the same config.
       NEXT_PUBLIC_API_URL: https://csms-test.ivoracharge.com/hasura/v1/graphql
       NEXT_PUBLIC_WS_URL: wss://csms-test.ivoracharge.com/hasura/v1/graphql
-      NEXT_PUBLIC_CITRINE_CORE_URL: https://csms-test.ivoracharge.com/core-api
-      # Google Maps: replace with your real keys from Google Cloud Console.
-      # GOOGLE_MAPS_API_KEY = map rendering; GOOGLE_MAPS_ADDRESS_API_KEY = geocoding/address lookup.
-      GOOGLE_MAPS_API_KEY: "AIzaSyDNIxJptezylHwTwvwJkxyoY0pD_z3DMEw"
-      GOOGLE_MAPS_ADDRESS_API_KEY: "AIzaSyDNIxJptezylHwTwvwJkxyoY0pD_z3DMEw"
-      # Self-signup (public /signup page): Resend transactional email for the
-      # verification link. Server-only; sending domain must be verified in the
-      # Resend account. Flip SELF_SIGNUP_ENABLED to "false" to close signups.
-      SELF_SIGNUP_ENABLED: "true"
-      RESEND_API_KEY: "${RESEND_API_KEY}"
-      SIGNUP_EMAIL_FROM: "Ivora Charge <no-reply@ivoracharge.com>"
-
-volumes:
-  keycloak-data:
+      NEXT_PUBLIC_CITRINE_CORE_URL: /api/core
+      # The upstream base compose seeds the dev 'generic' provider credentials; blank
+      # them here (config.ts also refuses the generic provider in production).
+      NEXT_PUBLIC_ADMIN_EMAIL: ""
+      ADMIN_PASSWORD: ""
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY}
+      GOOGLE_MAPS_ADDRESS_API_KEY: ${GOOGLE_MAPS_ADDRESS_API_KEY}
