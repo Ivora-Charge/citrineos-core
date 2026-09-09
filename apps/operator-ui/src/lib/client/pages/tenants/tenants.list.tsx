@@ -51,6 +51,12 @@ export const TenantsList = () => {
     toast.success(`Now acting as tenant #${id} (${name}). Tenant-scoped pages and new records use this tenant.`);
   };
 
+  const stopActing = () => {
+    window.localStorage.removeItem(ACTING_TENANT_KEY);
+    setActingTenant(null);
+    toast.success('Stopped acting as a tenant. Pages show your own tenant again.');
+  };
+
   // Recent privileged actions (user invites, payment syncs, ...) -- written
   // server-side via the admin secret, readable here by platform staff.
   const {
@@ -108,7 +114,10 @@ export const TenantsList = () => {
               {actingTenant && (
                 <>
                   {' '}
-                  Acting as tenant <span className="font-mono">#{actingTenant}</span>.
+                  Acting as tenant <span className="font-mono">#{actingTenant}</span>.{' '}
+                  <button type="button" className="underline" onClick={stopActing}>
+                    Stop acting
+                  </button>
                 </>
               )}
             </p>

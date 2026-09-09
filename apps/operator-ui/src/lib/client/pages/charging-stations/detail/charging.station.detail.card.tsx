@@ -388,6 +388,16 @@ export const ChargingStationDetailCard = ({
               />
 
               <KeyValueDisplay
+                keyLabel={translate('ChargingStations.meterValueSampleInterval')}
+                value={
+                  station.meterValueSampleInterval === null ||
+                  station.meterValueSampleInterval === undefined
+                    ? translate('ChargingStations.meterValueSampleIntervalUnmanaged')
+                    : `${station.meterValueSampleInterval} s`
+                }
+              />
+
+              <KeyValueDisplay
                 keyLabel={translate('ChargingStations.detailCard.connectorTypes')}
                 value={
                   isEmpty(station.connectors)

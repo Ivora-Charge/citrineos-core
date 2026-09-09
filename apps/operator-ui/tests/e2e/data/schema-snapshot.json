@@ -600,6 +600,7 @@
       "locationId",
       "meterSerialNumber",
       "meterType",
+      "meterValueSampleInterval",
       "ocppConnectionName",
       "parkingRestrictions",
       "protocol",

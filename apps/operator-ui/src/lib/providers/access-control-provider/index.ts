@@ -59,6 +59,14 @@ const PLATFORM_ONLY: Partial<Record<string, ActionType[]>> = {
   // profile (/settings/business) -- Hasura row permissions scope that to
   // their own row.
   Tenants: [ActionType.LIST, ActionType.CREATE, ActionType.SHOW, ActionType.DELETE],
+  // Platform-wide configuration (/settings/platform): platform staff only, every action.
+  PlatformSettings: [
+    ActionType.LIST,
+    ActionType.SHOW,
+    ActionType.CREATE,
+    ActionType.EDIT,
+    ActionType.DELETE,
+  ],
 };
 
 export const createAccessProvider = <TPermissions = unknown>(

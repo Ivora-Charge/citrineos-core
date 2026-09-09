@@ -13,6 +13,7 @@ import dataProviderHasura, {
 } from '@refinedev/hasura';
 import { getHasuraAdminSecretAction } from '@lib/server/actions/getHasuraAdminSecretAction';
 import { ACTING_TENANT_KEY } from '@lib/client/hooks/useTenantId';
+import { hasPlatformRole } from '@lib/utils/csms-claims';
 
 const requestMiddleware = async (request: any) => {
   const requestHeaders = {
@@ -87,12 +88,15 @@ const actingTenantFilter = async (
   const acting = Number(window.localStorage.getItem(ACTING_TENANT_KEY));
   if (!acting) return null;
   try {
-    // Tenant users are bound by their token; only platform staff (no tenant
-    // claim) act as a selected tenant.
+    // Tenant users are bound by their token (Hasura scopes them anyway);
+    // platform staff act as the selected tenant. Staff query Hasura as
+    // `admin`, so this filter is the only thing scoping their lists -- and
+    // it must apply even when their token also names a home tenant (the
+    // owner accounts carry tenant 1), or "act as" is a no-op for them.
     const identity = (await authProvider?.getIdentity?.()) as
-      | { tenantId?: string }
+      | { tenantId?: string; roles?: string[] }
       | undefined;
-    if (Number(identity?.tenantId)) return null;
+    if (!hasPlatformRole(identity?.roles)) return null;
   } catch {
     return null;
   }

@@ -142,6 +142,17 @@ export class ChargingStation extends Model implements ChargingStationDto {
   })
   declare use16StatusNotification0: boolean;
 
+  /**
+   * Seconds between periodic MeterValues while a transaction is running.
+   * Pushed to the charger on every accepted boot (OCPP 1.6 MeterValueSampleInterval,
+   * OCPP 2.x SampledDataCtrlr.TxUpdatedInterval). NULL leaves the charger's own value alone.
+   */
+  @Column({
+    type: DataType.INTEGER,
+    defaultValue: 20,
+  })
+  declare meterValueSampleInterval?: number | null;
+
   @ForeignKey(() => Location)
   @Column(DataType.INTEGER)
   declare locationId?: number | null;

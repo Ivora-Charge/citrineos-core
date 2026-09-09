@@ -5,14 +5,20 @@
 
 import React, { useEffect, useState } from 'react';
 import {
+  type ChargingStationDto,
   ChargingStationParkingRestrictionEnum,
   type ChargingStationParkingRestrictionEnumType,
   ChargingStationProps,
   ChargingStationSchema,
   type LocationDto,
   LocationProps,
+  OCPPVersion,
   type TariffDto,
 } from '@citrineos/base';
+import type { MessageConfirmation } from '@lib/utils/MessageConfirmation';
+import { triggerMessageAndHandleResponse } from '@lib/utils/messages.utils';
+import { useGqlCustom } from '@lib/utils/use-gql-custom';
+import { PLATFORM_SETTINGS_LIST_QUERY } from '@lib/queries/platform.settings';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Form } from '@lib/client/components/form';
 import {
@@ -42,7 +48,10 @@ import {
   CHARGING_STATIONS_GET_QUERY,
 } from '@lib/queries/charging.stations';
 import { LOCATIONS_CREATE_MUTATION, LOCATIONS_LIST_QUERY } from '@lib/queries/locations';
-import { CONNECTOR_EDIT_MUTATION, GET_CONNECTOR_LIST_FOR_STATION_EVSE } from '@lib/queries/connectors';
+import {
+  CONNECTOR_EDIT_MUTATION,
+  GET_CONNECTOR_LIST_FOR_STATION_EVSE,
+} from '@lib/queries/connectors';
 import { TARIFF_CREATE_MUTATION, TARIFF_LIST_QUERY } from '@lib/queries/tariffs';
 import { TENANT_GET_QUERY } from '@lib/queries/tenants';
 import { ActionType, ResourceType } from '@lib/utils/access.types';
@@ -91,6 +100,17 @@ const ChargingStationCreateSchema = ChargingStationSchema.pick({
   [ChargingStationProps.floorLevel]: true,
   [ChargingStationProps.parkingRestrictions]: true,
   [ChargingStationProps.use16StatusNotification0]: true,
+}).extend({
+  // Seconds between periodic MeterValues during a session. Pushed to the
+  // charger on every accepted boot (and live below when it is online).
+  // Blank = leave the charger's own value alone.
+  // The number input hands the form a string (or '' when emptied); the loaded
+  // record hands it a number. handleOnFinish normalises to number | null.
+  [ChargingStationProps.meterValueSampleInterval]: z.union([
+    z.string().regex(/^\d*$/),
+    z.number().int().min(0),
+    z.null(),
+  ]),
 });
 
 const defaultChargingStation = {
@@ -102,6 +122,7 @@ const defaultChargingStation = {
   // 1.6 chargers report per-connector status; keep the station-level id-0
   // StatusNotification mapping ON unless someone flips it under Advanced.
   [ChargingStationProps.use16StatusNotification0]: true,
+  [ChargingStationProps.meterValueSampleInterval]: 20,
 };
 
 const parkingRestrictions: ChargingStationParkingRestrictionEnumType[] = Object.keys(
@@ -318,6 +339,24 @@ export const ChargingStationUpsert = ({
       form.setValue(ChargingStationProps.locationId, Number(locationId));
     }
   }, [locationId, form]);
+
+  // New stations start from the platform-wide default sampling interval
+  // (PlatformSettings.defaultMeterValueSampleInterval); the hardcoded 20 only
+  // covers the moment before that query answers. Never touches an edit form.
+  const {
+    query: { data: platformSettingsData },
+  } = useGqlCustom({ gqlQuery: PLATFORM_SETTINGS_LIST_QUERY } as any);
+  useEffect(() => {
+    if (id) return;
+    const rows: Array<{ key: string; value: string | null }> =
+      platformSettingsData?.data?.PlatformSettings ?? [];
+    const raw = rows.find((r) => r.key === 'defaultMeterValueSampleInterval')?.value;
+    if (raw === undefined || raw === null || raw.trim() === '') return;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < 0) return;
+    if (form.getFieldState(ChargingStationProps.meterValueSampleInterval).isDirty) return;
+    form.setValue(ChargingStationProps.meterValueSampleInterval, parsed);
+  }, [id, platformSettingsData, form]);
 
   // Initialize coordinates from station data when editing
   useEffect(() => {
@@ -552,6 +591,11 @@ export const ChargingStationUpsert = ({
     const now = new Date().toISOString();
 
     const newItem: any = getSerializedValues({ ...values }, ChargingStationClass);
+    {
+      const raw = newItem.meterValueSampleInterval;
+      newItem.meterValueSampleInterval =
+        raw === '' || raw === undefined || raw === null ? null : Number(raw);
+    }
 
     // Handle coordinates
     if (useLocationCoordinates) {
@@ -569,9 +613,55 @@ export const ChargingStationUpsert = ({
     }
     newItem.updatedAt = now;
 
+    // Live push: the boot handler re-applies the interval on every reconnect,
+    // but an operator editing an online charger expects it to take effect now.
+    const existing = form.refineCore.query?.data?.data as ChargingStationDto | undefined;
+    const intervalChanged =
+      !!id &&
+      existing !== undefined &&
+      existing.meterValueSampleInterval !== newItem.meterValueSampleInterval;
+    const pushIntervalLive = async () => {
+      if (
+        !intervalChanged ||
+        !existing?.isOnline ||
+        !existing.ocppConnectionName ||
+        newItem.meterValueSampleInterval === null ||
+        newItem.meterValueSampleInterval === undefined
+      ) {
+        return;
+      }
+      const value = String(newItem.meterValueSampleInterval);
+      const identifier = `identifier=${existing.ocppConnectionName}&tenantId=${tenantId}`;
+      if (existing.protocol === OCPPVersion.OCPP1_6) {
+        await triggerMessageAndHandleResponse<MessageConfirmation[]>({
+          translate,
+          url: `/configuration/changeConfiguration?${identifier}`,
+          data: { key: 'MeterValueSampleInterval', value },
+          ocppVersion: OCPPVersion.OCPP1_6,
+        });
+      } else {
+        await triggerMessageAndHandleResponse<MessageConfirmation[]>({
+          translate,
+          url: `/monitoring/setVariables?${identifier}`,
+          data: {
+            setVariableData: [
+              {
+                component: { name: 'SampledDataCtrlr' },
+                variable: { name: 'TxUpdatedInterval' },
+                attributeValue: value,
+              },
+            ],
+          },
+          ocppVersion: (existing.protocol as OCPPVersion) ?? OCPPVersion.OCPP2_0_1,
+        });
+      }
+    };
+
     form.refineCore.onFinish(newItem).then(async (result) => {
       if (result) {
         const finalStationId = id || (result as any).data?.id;
+
+        await pushIntervalLive().catch((err) => console.error('meter interval push failed', err));
 
         const appliedTariffId = await applyTariff();
         await syncStationLocation(appliedTariffId);
@@ -778,6 +868,15 @@ export const ChargingStationUpsert = ({
                   name={ChargingStationProps.use16StatusNotification0}
                   label={translate('ChargingStations.use16StatusNotification0')}
                 />
+
+                <FormField
+                  control={form.control}
+                  label={translate('ChargingStations.meterValueSampleInterval')}
+                  name={ChargingStationProps.meterValueSampleInterval}
+                  description={translate('ChargingStations.meterValueSampleIntervalHint')}
+                >
+                  <Input type="number" min={0} step={1} />
+                </FormField>
 
                 {/* Coordinates Section */}
                 <Field>
@@ -1060,9 +1159,7 @@ export const ChargingStationUpsert = ({
                   step="any"
                   min={0}
                   value={newTariff.pricePerSession}
-                  onChange={(e) =>
-                    setNewTariff((p) => ({ ...p, pricePerSession: e.target.value }))
-                  }
+                  onChange={(e) => setNewTariff((p) => ({ ...p, pricePerSession: e.target.value }))}
                 />
               </Field>
             </div>

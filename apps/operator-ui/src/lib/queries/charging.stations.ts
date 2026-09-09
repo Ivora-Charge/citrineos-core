@@ -232,6 +232,7 @@ export const CHARGING_STATIONS_GET_QUERY = gql`
       capabilities
       coordinates
       use16StatusNotification0
+      meterValueSampleInterval
       location: Location {
         id
         name

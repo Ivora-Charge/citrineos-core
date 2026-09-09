@@ -18,6 +18,7 @@ import {
   Receipt,
   Users,
   Wrench,
+  SlidersHorizontal,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
@@ -150,6 +151,17 @@ export const MainMenu = ({ activeSection }: MainMenuProps) => {
       label: 'Business',
       icon: <Building2 className={sidebarIconSize} />,
     },
+    // Platform-wide configuration: platform staff only (same gate as Tenants),
+    // shown in simple mode too so admins can reach it without the toggle.
+    ...(canListTenants?.can
+      ? [
+          {
+            key: `/${MenuSection.SETTINGS}/platform`,
+            label: 'Platform',
+            icon: <SlidersHorizontal className={sidebarIconSize} />,
+          },
+        ]
+      : []),
   ];
 
   return (

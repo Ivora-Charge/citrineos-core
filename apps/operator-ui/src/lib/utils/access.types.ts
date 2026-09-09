@@ -49,6 +49,7 @@ export enum ResourceType {
   SERVER_NETWORK_PROFILES = 'ServerNetworkProfiles',
   PARTNERS = 'TenantPartners',
   TENANTS = 'Tenants',
+  PLATFORM_SETTINGS = 'PlatformSettings',
 }
 
 export enum ActionType {

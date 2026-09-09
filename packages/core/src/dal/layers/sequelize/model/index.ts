@@ -9,6 +9,7 @@ export { ChangeConfiguration } from './ChangeConfiguration.js';
 export { OCPPMessage } from './OCPPMessage.js';
 export { Reservation } from './Reservation.js';
 export { SecurityEvent } from './SecurityEvent.js';
+export { PlatformSetting, PlatformSettingKey } from './PlatformSetting.js';
 export { Tenant } from './Tenant.js';
 export { TenantPartner } from './TenantPartner.js';
 export { ChargingStationSecurityInfo } from './ChargingStationSecurityInfo.js';

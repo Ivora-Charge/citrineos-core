@@ -35,6 +35,7 @@ import type {
   InstalledCertificate,
 } from '../layers/sequelize/model/Certificate/index.js';
 import type { ChangeConfiguration } from '../layers/sequelize/model/ChangeConfiguration.js';
+import type { PlatformSetting } from '../layers/sequelize/model/PlatformSetting.js';
 import type {
   ChargingNeeds,
   ChargingProfile,
@@ -569,4 +570,10 @@ export interface IChangeConfigurationRepository extends CrudRepository<ChangeCon
 
 export interface ITenantRepository extends CrudRepository<Tenant> {
   createTenant(tenant: Tenant): Promise<Tenant>;
+}
+
+export interface IPlatformSettingRepository extends CrudRepository<PlatformSetting> {
+  /** Value of one platform-wide setting, or null when unset / unknown. */
+  getValue(key: string): Promise<string | null>;
+  getAll(): Promise<Record<string, string | null>>;
 }

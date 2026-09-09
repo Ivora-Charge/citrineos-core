@@ -12,6 +12,7 @@ import { Boot } from './model/Boot.js';
 import { AsyncJobStatus } from './model/AsyncJob/AsyncJobStatus.js';
 import { Certificate } from './model/Certificate/Certificate.js';
 import { ChangeConfiguration } from './model/ChangeConfiguration.js';
+import { PlatformSetting } from './model/PlatformSetting.js';
 import { ChargingNeeds } from './model/ChargingProfile/ChargingNeeds.js';
 import { ChargingProfile } from './model/ChargingProfile/ChargingProfile.js';
 import { ChargingSchedule } from './model/ChargingProfile/ChargingSchedule.js';
@@ -149,6 +150,7 @@ export class DefaultSequelizeInstance {
         InstallCertificateAttempt,
         DeleteCertificateAttempt,
         ChangeConfiguration,
+        PlatformSetting,
         ChargingNeeds,
         ChargingProfile,
         ChargingSchedule,

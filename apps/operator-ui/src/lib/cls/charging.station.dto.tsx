@@ -60,6 +60,7 @@ export class ChargingStationClass implements Partial<ChargingStationDto> {
   floorLevel?: string | null;
   parkingRestrictions?: ChargingStationParkingRestrictionEnumType[] | null;
   capabilities?: ChargingStationCapabilityEnumType[] | null;
+  meterValueSampleInterval?: number | null;
   locationId?: number | null;
   @Expose({ name: 'LatestStatusNotifications' })
   statusNotifications?: LatestStatusNotificationDto[] | null;
@@ -144,9 +145,7 @@ export const getChargingStationStatusCounts = (chargingStation: ChargingStationS
       // nested on the evse in this query, so that clause never matched and
       // every evse fell through to UNAVAILABLE.
       const evseOcppId = (evse as EvseDto).evseTypeId;
-      const notificationsForEvse = allStatusNotifications.filter(
-        (sn) => sn?.evseId === evseOcppId,
-      );
+      const notificationsForEvse = allStatusNotifications.filter((sn) => sn?.evseId === evseOcppId);
       // Prefer the most recently updated notification for this evse.
       const latestStatusNotificationForEvse = notificationsForEvse.reduce<
         StatusNotificationDto | undefined

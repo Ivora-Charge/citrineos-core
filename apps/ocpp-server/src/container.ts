@@ -36,6 +36,7 @@ import {
   SequelizeBootRepository,
   SequelizeCertificateRepository,
   SequelizeChangeConfigurationRepository,
+  SequelizePlatformSettingRepository,
   SequelizeChargingProfileRepository,
   SequelizeChargingStationSecurityInfoRepository,
   SequelizeChargingStationSequenceRepository,
@@ -276,6 +277,7 @@ function registerRepositories(container: AwilixContainer): void {
     bootRepository: asClass(SequelizeBootRepository).singleton(),
     certificateRepository: asClass(SequelizeCertificateRepository).singleton(),
     changeConfigurationRepository: asClass(SequelizeChangeConfigurationRepository).singleton(),
+    platformSettingRepository: asClass(SequelizePlatformSettingRepository).singleton(),
     chargingProfileRepository: asClass(SequelizeChargingProfileRepository).singleton(),
     chargingStationSecurityInfoRepository: asClass(
       SequelizeChargingStationSecurityInfoRepository,

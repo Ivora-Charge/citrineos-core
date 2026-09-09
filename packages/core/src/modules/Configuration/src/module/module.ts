@@ -48,12 +48,14 @@ import type {
   ILocationRepository,
   IMessageInfoRepository,
   IOCPPMessageRepository,
+  IPlatformSettingRepository,
   ITenantRepository,
 } from '@dal/interfaces/repositories.js';
 import {
   Boot,
   ChangeConfiguration,
   ChargingStation,
+  PlatformSettingKey,
   ChargingStationNetworkProfile,
   Component,
   ServerNetworkProfile,
@@ -72,6 +74,8 @@ export interface ConfigurationModuleDependencies extends OcppModuleDependencies 
   locationRepository: ILocationRepository;
   changeConfigurationRepository: IChangeConfigurationRepository;
   ocppMessageRepository: IOCPPMessageRepository;
+  /** Optional so existing test harnesses that build the module by hand keep working. */
+  platformSettingRepository?: IPlatformSettingRepository;
   idGenerator: IdGenerator;
   tenantRepository: ITenantRepository;
   configurationDeviceModelService: DeviceModelService;
@@ -103,6 +107,7 @@ export class ConfigurationModule extends AbstractModule {
     locationRepository,
     changeConfigurationRepository,
     ocppMessageRepository,
+    platformSettingRepository,
     idGenerator,
     tenantRepository,
     configurationDeviceModelService,
@@ -119,6 +124,7 @@ export class ConfigurationModule extends AbstractModule {
     this._locationRepository = locationRepository;
     this._changeConfigurationRepository = changeConfigurationRepository;
     this._ocppMessageRepository = ocppMessageRepository;
+    this._platformSettingRepository = platformSettingRepository;
     this._tenantRepository = tenantRepository;
 
     this._deviceModelService = configurationDeviceModelService;
@@ -158,6 +164,14 @@ export class ConfigurationModule extends AbstractModule {
   }
 
   protected _changeConfigurationRepository: IChangeConfigurationRepository;
+
+  protected _platformSettingRepository?: IPlatformSettingRepository;
+
+  /**
+   * Seconds between periodic MeterValues when a station row does not exist yet
+   * and PlatformSettings.defaultMeterValueSampleInterval is unset.
+   */
+  static readonly DEFAULT_METER_VALUE_SAMPLE_INTERVAL = 20;
 
   get changeConfigurationRepository(): IChangeConfigurationRepository {
     return this._changeConfigurationRepository;
@@ -281,6 +295,21 @@ export class ConfigurationModule extends AbstractModule {
       tenantId,
       ocppConnectionName,
     );
+
+    // Ivora: every accepted boot re-applies the station's meter sampling interval
+    // (SampledDataCtrlr.TxUpdatedInterval), see _pushMeterValueSampleInterval.
+    if (bootNotificationResponse.status === RegistrationStatusEnum.Accepted) {
+      this._pushMeterValueSampleInterval(
+        tenantId,
+        ocppConnectionName,
+        (message.protocol as OCPPVersion) ?? OCPPVersion.OCPP2_0_1,
+      ).catch((error) =>
+        this._logger.warn(
+          `Failed to push TxUpdatedInterval to ${ocppConnectionName} after boot:`,
+          error,
+        ),
+      );
+    }
 
     // If boot notification is not pending, do not start configuration.
     // If cached boot status is not null and pending, configuration is already in progress - do not start configuration again.
@@ -939,6 +968,19 @@ export class ConfigurationModule extends AbstractModule {
       ocppConnectionName,
     );
 
+    // Ivora: every accepted boot re-applies the station's meter sampling interval
+    // (see _pushMeterValueSampleInterval). Fire-and-forget; the charger's
+    // ChangeConfiguration response lands in _handleOcpp16ChangeConfiguration.
+    if (bootNotificationResponse.status === OCPP1_6.BootNotificationResponseStatus.Accepted) {
+      this._pushMeterValueSampleInterval(tenantId, ocppConnectionName, OCPPVersion.OCPP1_6).catch(
+        (error) =>
+          this._logger.warn(
+            `Failed to push MeterValueSampleInterval to ${ocppConnectionName} after boot:`,
+            error,
+          ),
+      );
+    }
+
     // 3. Sync configurations
     // If boot notification is not pending, do not start configuration.
     // If cached boot status is not null and pending, configuration is already in progress - do not start configuration again.
@@ -1023,6 +1065,150 @@ export class ConfigurationModule extends AbstractModule {
         requestedMessage: OCPP1_6.TriggerMessageRequestRequestedMessage.BootNotification,
       } as OCPP1_6.TriggerMessageRequest,
     );
+  }
+
+  /**
+   * Ivora: push the station's meter sampling configuration to the charger.
+   *
+   * Interval: ChargingStations.meterValueSampleInterval (seconds, editable per
+   * station in the operator UI). NULL means "leave the charger's own value
+   * alone". A station row that does not exist yet (first boot of an unknown
+   * charger) gets PlatformSettings.defaultMeterValueSampleInterval (20 when
+   * unset).
+   *
+   * Measurands: PlatformSettings.meterValuesSampledData (comma-separated),
+   * platform-wide, pushed only when non-empty.
+   *
+   * Applied on every accepted boot so a factory-reset or vendor-default charger
+   * (Wallbox ships 300 s, energy register only) starts reporting live
+   * MeterValues without anyone sending a ChangeConfiguration by hand.
+   *
+   * OCPP 1.6: ChangeConfiguration MeterValueSampleInterval / MeterValuesSampledData.
+   * OCPP 2.0.1 / 2.1: SetVariables SampledDataCtrlr.TxUpdatedInterval / TxUpdatedMeasurands.
+   */
+  protected async _pushMeterValueSampleInterval(
+    tenantId: number,
+    ocppConnectionName: string,
+    protocol: OCPPVersion,
+  ): Promise<void> {
+    const settings = await this._readPlatformSettings();
+
+    const station = await this._locationRepository.readChargingStationByStationId(
+      tenantId,
+      ocppConnectionName,
+    );
+    const interval = station ? station.meterValueSampleInterval : settings.defaultInterval;
+
+    const measurands = settings.measurands;
+
+    if (interval === null || interval === undefined) {
+      this._logger.debug(
+        `Station ${ocppConnectionName} has no meterValueSampleInterval; leaving charger value as-is`,
+      );
+    }
+    const intervalValue =
+      interval === null || interval === undefined
+        ? null
+        : String(Math.max(0, Math.trunc(Number(interval))));
+
+    if (intervalValue === null && !measurands) {
+      return;
+    }
+
+    if (protocol === OCPPVersion.OCPP1_6) {
+      const keys: Array<[string, string]> = [];
+      if (intervalValue !== null) keys.push(['MeterValueSampleInterval', intervalValue]);
+      if (measurands) keys.push(['MeterValuesSampledData', measurands]);
+      for (const [key, value] of keys) {
+        this._logger.info(`Pushing ${key}=${value} to ${ocppConnectionName} after boot`);
+        // Sequential: chargers must answer one CSMS call before the next.
+        await this._sendCallAndAwaitResponse(ocppConnectionName, tenantId, protocol, key, value);
+      }
+      return;
+    }
+
+    const setVariableData: OCPP2_common_types.SetVariableDataType[] = [];
+    if (intervalValue !== null) {
+      setVariableData.push({
+        component: { name: 'SampledDataCtrlr' },
+        variable: { name: 'TxUpdatedInterval' },
+        attributeValue: intervalValue,
+      });
+    }
+    if (measurands) {
+      setVariableData.push({
+        component: { name: 'SampledDataCtrlr' },
+        variable: { name: 'TxUpdatedMeasurands' },
+        attributeValue: measurands,
+      });
+    }
+    this._logger.info(
+      `Pushing SampledDataCtrlr ${setVariableData.map((v) => `${v.variable.name}=${v.attributeValue}`).join(', ')} to ${ocppConnectionName} after boot`,
+    );
+    await this.sendCall(ocppConnectionName, tenantId, protocol, OCPP_CallAction.SetVariables, {
+      setVariableData,
+    } as OCPP2_request_types.SetVariablesRequest);
+  }
+
+  /** One OCPP 1.6 ChangeConfiguration, resolved when the charger answers (or the cache times out). */
+  private async _sendCallAndAwaitResponse(
+    ocppConnectionName: string,
+    tenantId: number,
+    protocol: OCPPVersion,
+    key: string,
+    value: string,
+  ): Promise<void> {
+    const correlationId = uuidv4();
+    const responsePromise = this._cache.onChange(
+      correlationId,
+      this._config.maxCachingSeconds,
+      ocppConnectionName,
+    );
+    const confirmation = await this.sendCall(
+      ocppConnectionName,
+      tenantId,
+      protocol,
+      OCPP_CallAction.ChangeConfiguration,
+      { key, value } as OCPP1_6.ChangeConfigurationRequest,
+      undefined,
+      correlationId,
+    );
+    if (!confirmation.success) {
+      this._logger.warn(`ChangeConfiguration ${key} to ${ocppConnectionName} was not sent`);
+      return;
+    }
+    await responsePromise;
+  }
+
+  /** PlatformSettings the boot push consumes; tolerant of a missing repository or table. */
+  private async _readPlatformSettings(): Promise<{
+    defaultInterval: number;
+    measurands: string | null;
+  }> {
+    let defaultInterval: number = ConfigurationModule.DEFAULT_METER_VALUE_SAMPLE_INTERVAL;
+    let measurands: string | null = null;
+    if (!this._platformSettingRepository) {
+      return { defaultInterval, measurands };
+    }
+    try {
+      const all = await this._platformSettingRepository.getAll();
+      const rawInterval = all[PlatformSettingKey.defaultMeterValueSampleInterval];
+      if (rawInterval !== undefined && rawInterval !== null && rawInterval.trim() !== '') {
+        const parsed = Number(rawInterval);
+        if (Number.isFinite(parsed) && parsed >= 0) defaultInterval = parsed;
+      }
+      const rawMeasurands = all[PlatformSettingKey.meterValuesSampledData];
+      if (rawMeasurands && rawMeasurands.trim() !== '') {
+        measurands = rawMeasurands
+          .split(',')
+          .map((m) => m.trim())
+          .filter((m) => m.length > 0)
+          .join(',');
+      }
+    } catch (error) {
+      this._logger.warn('Could not read PlatformSettings; using built-in defaults', error);
+    }
+    return { defaultInterval, measurands };
   }
 
   /**
