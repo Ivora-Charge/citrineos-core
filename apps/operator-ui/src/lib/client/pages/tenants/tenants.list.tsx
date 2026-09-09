@@ -9,7 +9,10 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Plus, UserCog } from 'lucide-react';
 
-import { getTenantPlatformFeeAction, setTenantPlatformFeeAction } from '@lib/server/actions/stripeConnect';
+import {
+  getTenantPlatformFeeAction,
+  setTenantPlatformFeeAction,
+} from '@lib/server/actions/stripeConnect';
 
 import { Button } from '@lib/client/components/ui/button';
 import { Card, CardContent, CardHeader } from '@lib/client/components/ui/card';
@@ -18,10 +21,7 @@ import { ActionType, ResourceType } from '@lib/utils/access.types';
 import { AUDIT_LOGS_LIST_QUERY, TENANTS_LIST_QUERY } from '@lib/queries/tenants';
 import { ACTING_TENANT_KEY } from '@lib/client/hooks/useTenantId';
 import { Input } from '@lib/client/components/ui/input';
-import {
-  listInventoryAction,
-  moveToInventoryAction,
-} from '@lib/server/actions/claimCharger';
+import { listInventoryAction, moveToInventoryAction } from '@lib/server/actions/claimCharger';
 import { heading2Style, pageMargin } from '@lib/client/styles/page';
 import { buttonIconSize } from '@lib/client/styles/icon';
 
@@ -50,7 +50,9 @@ export const TenantsList = () => {
   const actAs = (id: number, name: string) => {
     window.localStorage.setItem(ACTING_TENANT_KEY, String(id));
     setActingTenant(String(id));
-    toast.success(`Now acting as tenant #${id} (${name}). Tenant-scoped pages and new records use this tenant.`);
+    toast.success(
+      `Now acting as tenant #${id} (${name}). Tenant-scoped pages and new records use this tenant.`,
+    );
   };
 
   const stopActing = () => {
@@ -86,7 +88,6 @@ export const TenantsList = () => {
   };
   useEffect(() => {
     void loadInventory();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const moveToInventory = async () => {
@@ -159,7 +160,9 @@ export const TenantsList = () => {
                     <td className="py-2 pr-4">{t.businessCity || '—'}</td>
                     <td className="py-2 pr-4 font-mono">{mask(t.stripeAccountId)}</td>
                     <td className="py-2 pr-4">{t.paymentOnboardingCompletedAt ? 'yes' : 'no'}</td>
-                    <td className="py-2 pr-4" onClick={e => e.stopPropagation()}><PlatformFeeEditor tenantId={t.id} /></td>
+                    <td className="py-2 pr-4" onClick={(e) => e.stopPropagation()}>
+                      <PlatformFeeEditor tenantId={t.id} />
+                    </td>
                     <td className="py-2 text-right">
                       <Button
                         size="sm"
@@ -279,39 +282,72 @@ export const TenantsList = () => {
   );
 };
 
-
 function PlatformFeeEditor({ tenantId }: { tenantId: number }) {
   const [percent, setPercent] = useState('');
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
   useEffect(() => {
     let active = true;
-    getTenantPlatformFeeAction(tenantId).then(result => {
+    getTenantPlatformFeeAction(tenantId).then((result) => {
       if (!active) return;
       if (result.success) setPercent(String(result.data.basis_points / 100));
       else setError(result.error);
       setBusy(false);
     });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [tenantId]);
   const save = async () => {
-    const n = Number(percent), bps = Math.round(n * 100);
-    if (!percent.trim() || !Number.isFinite(n) || bps < 0 || bps > 10000 || Math.abs(n * 100 - bps) > 0.000001) {
-      toast.error('Enter 0–100%, with at most two decimal places.'); return;
+    const n = Number(percent),
+      bps = Math.round(n * 100);
+    if (
+      !percent.trim() ||
+      !Number.isFinite(n) ||
+      bps < 0 ||
+      bps > 10000 ||
+      Math.abs(n * 100 - bps) > 0.000001
+    ) {
+      toast.error('Enter 0–100%, with at most two decimal places.');
+      return;
     }
     setBusy(true);
     try {
       const result = await setTenantPlatformFeeAction(tenantId, bps);
-      if (result.success) { setError(''); toast.success(`Platform fee saved: ${result.data.basis_points / 100}% for new checkouts.`); }
-      else toast.error(result.error);
-    } finally { setBusy(false); }
+      if (result.success) {
+        setError('');
+        toast.success(`Platform fee saved: ${result.data.basis_points / 100}% for new checkouts.`);
+      } else toast.error(result.error);
+    } finally {
+      setBusy(false);
+    }
   };
-  return <div>
-    <div className="flex items-center gap-1">
-      <Input aria-label={`Platform fee percentage for tenant ${tenantId}`} className="w-20" type="number" min="0" max="100" step="0.01"
-        value={percent} onChange={e => setPercent(e.target.value)} disabled={busy} />%
-      <Button type="button" size="sm" variant="outline" disabled={busy || percent === ''} onClick={() => void save()}>Save</Button>
+  return (
+    <div>
+      <div className="flex items-center gap-1">
+        <Input
+          aria-label={`Platform fee percentage for tenant ${tenantId}`}
+          className="w-20"
+          type="number"
+          min="0"
+          max="100"
+          step="0.01"
+          value={percent}
+          onChange={(e) => setPercent(e.target.value)}
+          disabled={busy}
+        />
+        %
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={busy || percent === ''}
+          onClick={() => void save()}
+        >
+          Save
+        </Button>
+      </div>
+      {error && <span className="text-destructive text-xs">{error}</span>}
     </div>
-    {error && <span className="text-destructive text-xs">{error}</span>}
-  </div>;
+  );
 }

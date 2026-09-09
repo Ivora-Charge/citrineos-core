@@ -123,25 +123,38 @@ export async function getStripeConnectStatusAction(
   });
 }
 
-
-export async function getTenantPlatformFeeAction(tenantId: number): Promise<ActionResult<{ basis_points: number }>> {
+export async function getTenantPlatformFeeAction(
+  tenantId: number,
+): Promise<ActionResult<{ basis_points: number }>> {
   return authedAction(async (session) => {
-    if (!isPlatformAdmin(session.user.roles ?? [])) throw new Error('Only platform admins can manage fees');
+    if (!isPlatformAdmin(session.user.roles ?? []))
+      throw new Error('Only platform admins can manage fees');
     if (!Number.isSafeInteger(tenantId) || tenantId <= 0) throw new Error('Invalid tenant');
     return paymentApi(`/platform-fee?tenant_id=${tenantId}`);
   });
 }
 
-export async function setTenantPlatformFeeAction(tenantId: number, basisPoints: number): Promise<ActionResult<{ basis_points: number }>> {
+export async function setTenantPlatformFeeAction(
+  tenantId: number,
+  basisPoints: number,
+): Promise<ActionResult<{ basis_points: number }>> {
   return authedAction(async (session) => {
-    if (!isPlatformAdmin(session.user.roles ?? [])) throw new Error('Only platform admins can manage fees');
+    if (!isPlatformAdmin(session.user.roles ?? []))
+      throw new Error('Only platform admins can manage fees');
     if (!Number.isSafeInteger(tenantId) || tenantId <= 0) throw new Error('Invalid tenant');
-    if (!Number.isInteger(basisPoints) || basisPoints < 0 || basisPoints > 10000) throw new Error('Invalid platform fee');
+    if (!Number.isInteger(basisPoints) || basisPoints < 0 || basisPoints > 10000)
+      throw new Error('Invalid platform fee');
     const result = await paymentApi(`/platform-fee?tenant_id=${tenantId}`, {
-      method: 'PUT', body: JSON.stringify({ basis_points: basisPoints }),
+      method: 'PUT',
+      body: JSON.stringify({ basis_points: basisPoints }),
     });
-    await audit({ actor: session.user.email ?? 'unknown', actorRoles: session.user.roles,
-      tenantId, action: 'tenant.platform-fee', detail: { basis_points: basisPoints } });
+    await audit({
+      actor: session.user.email ?? 'unknown',
+      actorRoles: session.user.roles,
+      tenantId,
+      action: 'tenant.platform-fee',
+      detail: { basis_points: basisPoints },
+    });
     return result;
   });
 }
