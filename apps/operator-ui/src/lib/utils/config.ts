@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { type AuthProviderType, AuthProviderTypeEnum } from '../providers/auth-provider/types';
+import { assertTestEnvironment } from './environment-safety';
 
 const getConfig: () => {
   appName: string;
@@ -45,6 +46,13 @@ const getConfig: () => {
 } = () => {
   const authProviderResult = AuthProviderTypeEnum.safeParse(process.env.NEXT_PUBLIC_AUTH_PROVIDER);
   const authProvider = authProviderResult.success ? authProviderResult.data : 'generic';
+  if (authProvider === 'supabase') {
+    assertTestEnvironment(
+      process.env.CSMS_ENV || process.env.NEXT_PUBLIC_CSMS_ENV,
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.NEXT_PUBLIC_AUTH_COOKIE_DOMAIN,
+    );
+  }
 
   // NEXT_PUBLIC_* are inlined by `next build`; changing them in compose without
   // rebuilding the image changes nothing the browser sees.

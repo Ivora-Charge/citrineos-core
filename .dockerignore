@@ -1,6 +1,11 @@
 # Ignore node modules directories
 **/node_modules
 
+# Runtime credentials and local Next.js env must never enter build layers.
+# Public configuration is passed through explicit Docker build arguments.
+**/.env
+**/.env.*
+
 # Ignore distribution directories
 **/dist
 

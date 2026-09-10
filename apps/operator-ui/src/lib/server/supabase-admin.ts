@@ -18,7 +18,8 @@
 // whole `csms` object, and nothing else in app_metadata (analytics' `plan`,
 // `role`) is ever sent.
 
-import { PLATFORM_ROLES, VALID_ROLES } from '@lib/utils/csms-claims';
+import { PLATFORM_ROLES, VALID_ROLES, normalizeCsmsGrantRoles } from '@lib/utils/csms-claims';
+import { assertTestEnvironment } from '@lib/utils/environment-safety';
 
 const ANALYTICS_URL = (process.env.ANALYTICS_URL || 'https://analytics.ivoracharge.com').replace(
   /\/$/,
@@ -53,6 +54,7 @@ export interface SupabaseUser {
 function authBase(): string {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (!url) throw new Error('NEXT_PUBLIC_SUPABASE_URL is not configured');
+  assertTestEnvironment(process.env.CSMS_ENV, url, process.env.NEXT_PUBLIC_AUTH_COOKIE_DOMAIN);
   return `${url.replace(/\/$/, '')}/auth/v1`;
 }
 
@@ -165,7 +167,15 @@ export async function writeCsmsClaims(
   claims: CsmsEnvClaims | null,
 ): Promise<SupabaseUser> {
   if (!env) throw new Error('env is required');
-  if (claims) assertValidClaims(claims);
+  if (claims) {
+    // Normalize only valid role arrays; malformed input must still reach the
+    // existing validator instead of acquiring a baseline role accidentally.
+    claims = {
+      ...claims,
+      roles: Array.isArray(claims.roles) ? normalizeCsmsGrantRoles(claims.roles) : claims.roles,
+    };
+    assertValidClaims(claims);
+  }
 
   const current = await getUser(userId);
   const existing = current.app_metadata?.csms;

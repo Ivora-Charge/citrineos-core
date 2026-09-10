@@ -21,7 +21,8 @@ import { HasuraHeader, HasuraRole } from '@lib/utils/hasura.types';
 import { parseJwt } from '@lib/utils/jwt';
 import { readCsmsClaims, type CsmsClaims } from '@lib/utils/csms-claims';
 import { readBillingBlock } from '@lib/utils/billing-claims';
-import { getBrowserSupabase } from '@lib/supabase/browser';
+import { createPlatformRoleRefreshGuard } from '@lib/utils/platform-role-refresh';
+import { getBrowserSupabase, recordExplicitTestSignIn, recordTestSignOut } from '@lib/supabase/browser';
 import { GenericLoginPage } from '@lib/providers/auth-provider/generic-auth-provider';
 
 export enum KeycloakRole {
@@ -60,15 +61,27 @@ interface Current {
   blocked: boolean;
 }
 
+const platformRoleRefresh = createPlatformRoleRefreshGuard();
+
 /** The current session, or null when signed out. `csms` is null when the
  * account has no access to this environment (the server refuses it too). */
 const current = async (): Promise<Current | null> => {
+  const supabase = getBrowserSupabase();
   const {
     data: { session },
-  } = await getBrowserSupabase().auth.getSession();
-  const accessToken = session?.access_token;
+  } = await supabase.auth.getSession();
+  let accessToken = session?.access_token;
   if (!accessToken) return null;
-  const claims = parseJwt(accessToken) ?? {};
+  let claims = parseJwt(accessToken) ?? {};
+  if (await platformRoleRefresh.refreshIfNeeded(
+    readCsmsClaims(claims, config.csmsEnv)?.roles,
+    () => supabase.auth.refreshSession(),
+  )) {
+    const { data: refreshed } = await supabase.auth.getSession();
+    accessToken = refreshed.session?.access_token;
+    if (!accessToken) return null;
+    claims = parseJwt(accessToken) ?? {};
+  }
   return {
     accessToken,
     claims,
@@ -168,6 +181,8 @@ export const createKeycloakAuthProvider = (): AuthProvider & AuthenticationConte
           error: { name: 'LoginError', message: 'Invalid email or password' },
         };
       }
+      platformRoleRefresh.resetAfterExplicitSignIn();
+      recordExplicitTestSignIn();
       const claims = parseJwt(data.session.access_token) ?? {};
       if (!readCsmsClaims(claims, config.csmsEnv)) {
         // Signed in to the Ivora account, but it has no grant for this
@@ -190,6 +205,7 @@ export const createKeycloakAuthProvider = (): AuthProvider & AuthenticationConte
       // Clears the shared cookie: this signs the user out of the analytics
       // product in this browser too (that is what single sign-on means).
       // scope 'local' keeps the user's sessions on other devices.
+      recordTestSignOut();
       await getBrowserSupabase().auth.signOut({ scope: 'local' });
       return { success: true, redirectTo: redirectTo || '/login' };
     },

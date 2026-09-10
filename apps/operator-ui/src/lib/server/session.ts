@@ -23,7 +23,7 @@
  */
 
 import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
 import config from '@lib/utils/config';
 import { authCookieOptions } from '@lib/utils/auth-cookie';
@@ -109,8 +109,9 @@ export async function getCsmsSession(): Promise<CsmsSession | null> {
   if (!config.supabaseUrl || !config.supabaseAnonKey) return null;
 
   const store = await cookies();
+  const requestHeaders = await headers();
   const supabase = createServerClient(config.supabaseUrl, config.supabaseAnonKey, {
-    cookieOptions: authCookieOptions(),
+    cookieOptions: authCookieOptions(requestHeaders.get('host') ?? undefined),
     cookies: {
       getAll: () => store.getAll(),
       setAll: (list) => {

@@ -21,6 +21,20 @@ export const PLATFORM_ROLES = ['admin', 'platform-admin', 'platform-support'] as
 export const TENANT_ROLES = ['tenant-admin', 'tenant-viewer'] as const;
 export const VALID_ROLES: readonly string[] = [...PLATFORM_ROLES, ...TENANT_ROLES];
 
+/** Canonical roles written into a non-empty grant. The console uses Hasura's
+ * built-in admin role for explicit platform administrators; tenant roles and
+ * platform-support never gain that capability. Unknown roles remain present
+ * so the writer's validation still rejects them.
+ */
+export function normalizeCsmsGrantRoles(roles: readonly string[]): string[] {
+  if (roles.length === 0) return [];
+  return [...new Set([
+    ...roles,
+    ...(roles.includes('platform-admin') ? ['admin'] : []),
+    'tenant-viewer',
+  ])];
+}
+
 /** Roles allowed to mutate: send OCPP commands, write core data, sync the
  * payment catalog, claim chargers. platform-support and tenant-viewer are
  * read-only. */

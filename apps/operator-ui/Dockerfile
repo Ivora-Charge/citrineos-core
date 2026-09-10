@@ -10,10 +10,6 @@ RUN corepack enable
 
 WORKDIR /app
 
-COPY . .
-
-RUN pnpm install --frozen-lockfile
-
 # NEXT_PUBLIC_* values are inlined into the client bundle by `next build`, so
 # the public-facing backend URLs must be present *before* the build runs —
 # setting them only at container runtime is too late for browser code.
@@ -44,6 +40,12 @@ ENV NEXT_PUBLIC_PAYMENT_SERVICE_URL=${NEXT_PUBLIC_PAYMENT_SERVICE_URL}
 ENV NEXT_PUBLIC_AUTH_PROVIDER=${NEXT_PUBLIC_AUTH_PROVIDER}
 ENV NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
 ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+
+# Keep the public build-argument layers before the large dependency tree.
+# This also lets classic Docker reuse them when only application code changes.
+COPY . .
+
+RUN pnpm install --frozen-lockfile
 
 RUN pnpm --filter "@citrineos/operator-ui..." build
 

@@ -69,3 +69,4 @@ docker-compose.prod.yml
 
 # Identity secrets shared with ivora-identity (see docker-compose.override.yml)
 .env
+.env.test

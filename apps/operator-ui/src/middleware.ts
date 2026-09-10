@@ -9,6 +9,8 @@ import { NextResponse } from 'next/server';
 import { authCookieOptions } from '@lib/utils/auth-cookie';
 import { readCsmsClaims } from '@lib/utils/csms-claims';
 import { readBillingBlock } from '@lib/utils/billing-claims';
+import { assertTestEnvironment } from '@lib/utils/environment-safety';
+import { hasDuplicateTestSessionCookies, hasTestLogoutMarker } from '@lib/utils/test-auth-cookie-migration';
 
 /**
  * Server-side authentication middleware.
@@ -47,14 +49,26 @@ export async function middleware(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const csmsEnv = process.env.CSMS_ENV;
+  assertTestEnvironment(csmsEnv, supabaseUrl, process.env.NEXT_PUBLIC_AUTH_COOKIE_DOMAIN);
   const isLogin = request.nextUrl.pathname === '/login';
   if (!supabaseUrl || !anonKey || !csmsEnv) {
+    return isLogin ? NextResponse.next() : toLogin(request, 'NoSession', null);
+  }
+  if (
+    csmsEnv === 'test' &&
+    process.env.NEXT_PUBLIC_AUTH_COOKIE_DOMAIN === '.ivoracharge.com' &&
+    (hasTestLogoutMarker(request.headers.get('cookie') ?? '', supabaseUrl) ||
+      hasDuplicateTestSessionCookies(request.headers.get('cookie') ?? '', supabaseUrl))
+  ) {
+    // The browser can distinguish scopes by deleting host-only copies; the
+    // server cannot. A shared logout also invalidates dormant host cookies.
+    // Render login without refreshing either ambiguous or logged-out token.
     return isLogin ? NextResponse.next() : toLogin(request, 'NoSession', null);
   }
 
   let response = NextResponse.next({ request });
   const supabase = createServerClient(supabaseUrl, anonKey, {
-    cookieOptions: authCookieOptions(),
+    cookieOptions: authCookieOptions(request.headers.get('host') ?? request.nextUrl.hostname),
     cookies: {
       getAll: () => request.cookies.getAll(),
       setAll: (list) => {
