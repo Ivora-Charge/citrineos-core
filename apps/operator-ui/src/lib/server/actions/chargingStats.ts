@@ -3,9 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 'use server';
 
-import { authedAction, type ActionResult } from '@lib/utils/action-guard';
+import { authedAction, ForbiddenError, resolveActingTenantId, type ActionResult } from '@lib/utils/action-guard';
 import config from '@lib/utils/config';
 import { hasuraAdmin } from '@lib/server/hasura';
+import { hasPlatformAdminRole, hasPlatformRole } from '@lib/utils/csms-claims';
 
 // Charging energy + realized Stripe revenue statistics for the dashboards.
 // kWh comes from the CitrineOS Transactions table (all sessions, paid or
@@ -63,21 +64,19 @@ const WINDOW_STARTS = () => {
   };
 };
 
-const isPlatform = (roles: string[]) =>
-  roles.includes('platform-admin') || roles.includes('platform-support') || roles.includes('admin');
-
 export async function chargingStatsAction(
   tenantId?: number,
 ): Promise<ActionResult<ChargingStats>> {
   return authedAction<ChargingStats>(async (session) => {
     const roles = session.user.roles ?? [];
     let effectiveTenant: number | null;
-    if (isPlatform(roles)) {
+    if (tenantId !== undefined && (!Number.isSafeInteger(tenantId) || tenantId <= 0)) {
+      throw new ForbiddenError('Invalid tenant');
+    }
+    if (hasPlatformRole(roles)) {
       effectiveTenant = tenantId ?? null; // null => whole fleet
     } else {
-      const own = Number(session.user.tenantId || config.tenantId);
-      if (!own) throw new Error('Session has no tenant');
-      effectiveTenant = own; // tenant users can never widen the scope
+      effectiveTenant = Number(resolveActingTenantId(session, tenantId === undefined ? undefined : String(tenantId)));
     }
 
     // Energy: one aggregate per window, tenant-filtered when scoped.
@@ -116,7 +115,7 @@ export async function chargingStatsAction(
     const revenue = (await res.json()).tenants ?? [];
 
     let tenantNames: Record<string, string> | undefined;
-    if (effectiveTenant == null) {
+    if (effectiveTenant == null && hasPlatformAdminRole(roles)) {
       const t = await hasuraAdmin<{ Tenants: Array<{ id: number; name: string }> }>(
         'query { Tenants { id name } }',
       );

@@ -21,6 +21,7 @@ import { Form } from '@lib/client/components/form';
 import { useFieldArray } from 'react-hook-form';
 import { AddArrayItemButton } from '@lib/client/components/form/add-array-item-button';
 import { RemoveArrayItemButton } from '@lib/client/components/form/remove-array-item-button';
+import { useTenantId } from '@lib/client/hooks/useTenantId';
 import { FormButtonVariants } from '@lib/client/components/buttons/form.button';
 
 export interface DeleteStationNetworkProfilesModalProps {
@@ -35,6 +36,7 @@ export const DeleteStationNetworkProfilesModal = ({
   station,
 }: DeleteStationNetworkProfilesModalProps) => {
   const dispatch = useDispatch();
+  const tenantId = useTenantId();
   const translate = useTranslate();
   const [loading, setLoading] = useState(false);
 
@@ -79,7 +81,7 @@ export const DeleteStationNetworkProfilesModal = ({
 
     const uniqueSlots = [...new Set(values.configurationSlots.map((cs) => cs.slot))];
 
-    let url = `/configuration/serverNetworkProfile?ocppConnectionName=${parsedStation.ocppConnectionName}`;
+    let url = `/configuration/serverNetworkProfile?ocppConnectionName=${encodeURIComponent(parsedStation.ocppConnectionName)}&tenantId=${tenantId}`;
     for (const configurationSlot of uniqueSlots) {
       url += `&configurationSlot=${configurationSlot}`;
     }

@@ -6,13 +6,14 @@
 import {
   authedActionWithRoles,
   resolveActingTenantId,
+  ForbiddenError,
   type ActionResult,
 } from '@lib/utils/action-guard';
-import { MUTATING_ROLES, PLATFORM_ROLES } from '@lib/utils/csms-claims';
+import { MUTATING_ROLES } from '@lib/utils/csms-claims';
 import config from '@lib/utils/config';
 
 // Same audience as syncPaymentCatalogAction: tenant admins and platform staff.
-const SYNC_ROLES: readonly string[] = [...new Set([...MUTATING_ROLES, ...PLATFORM_ROLES])];
+const SYNC_ROLES = MUTATING_ROLES;
 import { syncPaymentCatalogAction, type PaymentCatalogSyncResult } from './syncPaymentCatalog';
 import {
   buildCatalogSyncEntries,
@@ -30,6 +31,7 @@ const TARIFF_PAYMENT_SYNC_QUERY = `
   query TariffPaymentSync($tariffId: Int!, $tenantId: Int!) {
     Tariffs_by_pk(id: $tariffId) {
       id
+      tenantId
       currency
       pricePerKwh
       pricePerMin
@@ -49,10 +51,11 @@ const TARIFF_PAYMENT_SYNC_QUERY = `
       countryCode
       stripeAccountId
     }
-    ChargingStations(where: { Connectors: { tariffId: { _eq: $tariffId } } }) {
+    ChargingStations(where: { tenantId: { _eq: $tenantId }, Connectors: { tenantId: { _eq: $tenantId }, tariffId: { _eq: $tariffId } } }) {
       ocppConnectionName
       Location {
         id
+        tenantId
         name
         address
         city
@@ -60,12 +63,12 @@ const TARIFF_PAYMENT_SYNC_QUERY = `
         state
         country
       }
-      evses: Evses {
+      evses: Evses(where: { tenantId: { _eq: $tenantId } }) {
         id
         evseTypeId
         evseId
       }
-      connectors: Connectors(where: { tariffId: { _eq: $tariffId } }) {
+      connectors: Connectors(where: { tenantId: { _eq: $tenantId }, tariffId: { _eq: $tariffId } }) {
         evseId
         tariffId
         powerType
@@ -84,6 +87,7 @@ interface TariffPaymentSyncData {
     ocppConnectionName: string;
     Location: {
       id: number;
+      tenantId: number;
       name: string | null;
       address: string | null;
       city: string | null;
@@ -127,6 +131,7 @@ export async function syncTariffToPaymentAction(
     // syncPaymentCatalogAction, but the Hasura reads here need it too. A
     // session with no tenant and no override is refused -- never tenant "1".
     const tenantId = resolveActingTenantId(session, options?.tenantIdOverride);
+    if (!Number.isSafeInteger(tariffId) || tariffId <= 0) throw new ForbiddenError('Invalid tariff');
 
     const res = await fetch(config.apiUrl, {
       method: 'POST',
@@ -152,7 +157,10 @@ export async function syncTariffToPaymentAction(
     }
     const data = body.data;
     if (!data?.Tariffs_by_pk) {
-      throw new Error(`Tariff ${tariffId} not found`);
+      throw new ForbiddenError('Tariff is not available in this tenant');
+    }
+    if (Number(data.Tariffs_by_pk.tenantId) !== Number(tenantId)) {
+      throw new ForbiddenError('Tariff is not available in this tenant');
     }
 
     const tenant = data.Tenants_by_pk;
@@ -169,6 +177,9 @@ export async function syncTariffToPaymentAction(
     const seen = new Set<string>();
     const tariff = normalizeConnectorTariff(data.Tariffs_by_pk) as PaymentTariffInput;
     for (const station of data.ChargingStations) {
+      if (station.Location && station.Location.tenantId !== Number(tenantId)) {
+        throw new ForbiddenError('Station location is not available in this tenant');
+      }
       const evseById = new Map(station.evses.map((e) => [Number(e.id), e]));
       for (const connector of station.connectors) {
         const evse = evseById.get(Number(connector.evseId));

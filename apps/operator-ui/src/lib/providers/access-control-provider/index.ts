@@ -8,6 +8,7 @@ import {
   type OperatorCanParams,
 } from '@lib/utils/access.types';
 import type { AccessControlProvider, CanReturnType } from '@refinedev/core';
+import { csmsAccessDenied } from '@lib/utils/csms-access';
 
 /**
  * Configuration options for access provider
@@ -73,7 +74,7 @@ export const createAccessProvider = <TPermissions = unknown>(
   config: AccessProviderConfig<TPermissions>,
 ): AccessControlProvider => {
   const { getPermissions, getUserRole } = config;
-  const canDefault = true; // Least Permissions
+  const canDefault = false;
   const defaultReason = 'No explicit permissions defined';
 
   return {
@@ -90,6 +91,9 @@ export const createAccessProvider = <TPermissions = unknown>(
       if (!permissions) {
         return canResponse;
       }
+
+      const denied = csmsAccessDenied((permissions as any)?.roles ?? [], resource, action);
+      if (denied) return { can: false, reason: denied };
 
       const platformOnlyActions = resource ? PLATFORM_ONLY[resource] : undefined;
       if (platformOnlyActions?.includes(action as ActionType)) {

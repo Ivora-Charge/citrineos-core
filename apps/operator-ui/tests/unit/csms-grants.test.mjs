@@ -16,7 +16,7 @@ test('tenant and support grants never acquire administrative capabilities', () =
     const normalized = normalizeCsmsGrantRoles(roles);
     assert.equal(normalized.includes('admin'), false);
     assert.equal(normalized.includes('platform-admin'), false);
-    assert.equal(normalized.includes('tenant-viewer'), true);
+    assert.equal(normalized.includes('tenant-viewer'), roles.some(role => role !== 'platform-support'));
   }
   assert.deepEqual(normalizeCsmsGrantRoles([]), []);
   assert.ok(normalizeCsmsGrantRoles(['unknown-role']).includes('unknown-role'));
@@ -44,11 +44,20 @@ test('stale platform role repair deduplicates concurrent requests and attempts o
   assert.equal(calls, 1);
 });
 
-test('normal tokens, tenant users, and support users never trigger role repair', async () => {
+test('a normal signed token is refreshed too so revoked roles are not kept until expiry', async () => {
   const guard = createPlatformRoleRefreshGuard();
+  let calls = 0;
+  assert.equal(await guard.refreshIfNeeded(['platform-admin', 'admin'], async () => { calls++; }), true);
   for (const roles of [undefined, [], ['admin'], ['platform-admin', 'admin'], ['tenant-admin'], ['platform-support']]) {
     assert.equal(await guard.refreshIfNeeded(roles, () => { throw new Error('must not refresh'); }), false);
   }
+  assert.equal(calls, 1);
+});
+
+test('support-only ignores a leftover home tenant without gaining a tenant role', () => {
+  const roles = normalizeCsmsGrantRoles(['platform-support']);
+  assert.deepEqual(roles, ['platform-support']);
+  assert.deepEqual(readCsmsClaims({ app_metadata: { csms: { prod: { roles, tenant_id: '8' } } } }, 'prod'), { roles });
 });
 
 test('failed repair does not loop; an explicit new sign-in permits another attempt', async () => {

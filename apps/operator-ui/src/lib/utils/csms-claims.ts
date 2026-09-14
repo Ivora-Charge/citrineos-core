@@ -28,11 +28,13 @@ export const VALID_ROLES: readonly string[] = [...PLATFORM_ROLES, ...TENANT_ROLE
  */
 export function normalizeCsmsGrantRoles(roles: readonly string[]): string[] {
   if (roles.length === 0) return [];
-  return [...new Set([
-    ...roles,
-    ...(roles.includes('platform-admin') ? ['admin'] : []),
-    'tenant-viewer',
-  ])];
+  return [
+    ...new Set([
+      ...roles,
+      ...(roles.includes('platform-admin') ? ['admin'] : []),
+      ...(roles.some((role) => role !== 'platform-support') ? ['tenant-viewer'] : []),
+    ]),
+  ];
 }
 
 /** Roles allowed to mutate: send OCPP commands, write core data, sync the
@@ -45,6 +47,21 @@ export const hasAnyRole = (roles: readonly string[] | undefined, allowed: readon
 
 export const hasPlatformRole = (roles: readonly string[] | undefined) =>
   hasAnyRole(roles, PLATFORM_ROLES);
+
+export const hasPlatformAdminRole = (roles: readonly string[] | undefined) =>
+  hasAnyRole(roles, ['admin', 'platform-admin']);
+
+/** Tenant business information requires an explicit tenant or administrator role. */
+export const hasTenantAccess = (roles: readonly string[] | undefined) =>
+  hasAnyRole(roles, ['admin', 'platform-admin', ...TENANT_ROLES]);
+
+export const validTenantId = (value: unknown): value is string =>
+  typeof value === 'string' && /^[1-9]\d{0,8}$/.test(value);
+
+export const hasFleetAccess = (claims: CsmsClaims | null | undefined): boolean =>
+  !!claims &&
+  (hasPlatformRole(claims.roles) ||
+    (hasAnyRole(claims.roles, TENANT_ROLES) && validTenantId(claims.tenantId)));
 
 export interface CsmsClaims {
   roles: string[];
@@ -84,7 +101,8 @@ export function readCsmsClaims(claims: unknown, env: string | undefined): CsmsCl
   const tenantId =
     typeof rawTenant === 'string' && rawTenant.trim() !== '' ? rawTenant.trim() : undefined;
 
+  if (tenantId && !validTenantId(tenantId)) return null;
   if (!hasPlatformRole(roles) && !tenantId) return null;
 
-  return tenantId ? { roles, tenantId } : { roles };
+  return tenantId && hasTenantAccess(roles) ? { roles, tenantId } : { roles };
 }

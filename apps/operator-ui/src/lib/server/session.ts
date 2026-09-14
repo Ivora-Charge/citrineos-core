@@ -27,7 +27,8 @@ import { cookies, headers } from 'next/headers';
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
 import config from '@lib/utils/config';
 import { authCookieOptions } from '@lib/utils/auth-cookie';
-import { readCsmsClaims } from '@lib/utils/csms-claims';
+import { readCsmsClaims, hasFleetAccess } from '@lib/utils/csms-claims';
+import { currentAuthorization, AuthorizationUnavailableError } from '@lib/utils/live-authorization';
 import { readBillingBlock } from '@lib/utils/billing-claims';
 
 export interface CsmsSession {
@@ -77,7 +78,7 @@ export async function verifyAccessToken(token: string): Promise<JWTPayload> {
  * holder has no access to this environment. */
 export function sessionFromPayload(token: string, payload: JWTPayload): CsmsSession | null {
   const csms = readCsmsClaims(payload, config.csmsEnv);
-  if (!csms) return null;
+  if (!csms || !hasFleetAccess(csms)) return null;
   if (readBillingBlock(payload)) return null;
   const email = typeof payload.email === 'string' ? payload.email : undefined;
   return {
@@ -139,5 +140,16 @@ export async function getCsmsSession(): Promise<CsmsSession | null> {
     // Fail closed for anything that mutates: no verified identity, no action.
     throw err;
   }
-  return sessionFromPayload(token, payload);
+  try {
+    const live = await currentAuthorization(
+      token,
+      payload,
+      config.supabaseUrl,
+      config.supabaseAnonKey,
+    );
+    return live ? sessionFromPayload(token, live) : null;
+  } catch (err) {
+    if (err instanceof AuthorizationUnavailableError) throw new AuthUnavailableError(err.message);
+    throw err;
+  }
 }

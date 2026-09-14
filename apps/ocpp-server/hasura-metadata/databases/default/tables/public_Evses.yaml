@@ -37,15 +37,30 @@ insert_permissions:
 - role: user
   permission:
     check:
-      tenantId:
-        _eq: x-hasura-tenant-id
+      _and:
+      - tenantId:
+          _eq: x-hasura-tenant-id
+      - &id001
+        _or:
+        - stationId:
+            _is_null: true
+        - ChargingStation:
+            tenantId:
+              _eq: x-hasura-tenant-id
     columns: '*'
   comment: ''
 - role: tenant-admin
   permission:
     check:
-      tenantId:
-        _eq: x-hasura-tenant-id
+      _and:
+      - tenantId:
+          _eq: x-hasura-tenant-id
+      - _or:
+        - stationId:
+            _is_null: true
+        - ChargingStation:
+            tenantId:
+              _eq: x-hasura-tenant-id
     columns: '*'
 select_permissions:
 - role: user
@@ -83,8 +98,10 @@ update_permissions:
       tenantId:
         _eq: x-hasura-tenant-id
     check:
-      tenantId:
-        _eq: x-hasura-tenant-id
+      _and:
+      - tenantId:
+          _eq: x-hasura-tenant-id
+      - *id001
   comment: ''
 - role: tenant-admin
   permission:
@@ -93,8 +110,15 @@ update_permissions:
       tenantId:
         _eq: x-hasura-tenant-id
     check:
-      tenantId:
-        _eq: x-hasura-tenant-id
+      _and:
+      - tenantId:
+          _eq: x-hasura-tenant-id
+      - _or:
+        - stationId:
+            _is_null: true
+        - ChargingStation:
+            tenantId:
+              _eq: x-hasura-tenant-id
 delete_permissions:
 - role: user
   permission:

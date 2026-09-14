@@ -5,7 +5,7 @@
 
 import { Card, CardContent } from '@lib/client/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@lib/client/components/ui/tabs';
-import { CanAccess, useTranslate } from '@refinedev/core';
+import { CanAccess, useCan, useTranslate } from '@refinedev/core';
 import { getPlainToInstanceOptions } from '@lib/utils/tables';
 import { ActionType, ChargingStationAccessType, ResourceType } from '@lib/utils/access.types';
 import { EVSESList } from '@lib/client/pages/charging-stations/detail/evses/evses.list';
@@ -38,6 +38,8 @@ enum ChargingStationDetailTabType {
 
 export const ChargingStationDetailTabsCard = ({ id }: { id: number }) => {
   const translate = useTranslate();
+  const { data: ocppAccess } = useCan({ resource: 'OCPPMessages', action: ActionType.LIST });
+  const canReadOcpp = ocppAccess?.can === true;
 
   const { renderedVisibleColumns } = useColumnPreferences(
     getTransactionsColumns(translate).filter(
@@ -56,7 +58,9 @@ export const ChargingStationDetailTabsCard = ({ id }: { id: number }) => {
   // narrowed so a deep link to a hidden tab falls back too.
   const { advanced } = useUiMode();
   const visibleTabs = advanced
-    ? Object.keys(ChargingStationDetailTabType)
+    ? Object.keys(ChargingStationDetailTabType).filter(
+        (key) => key !== ChargingStationDetailTabType.ocppMessages || canReadOcpp,
+      )
     : [ChargingStationDetailTabType.transactions, ChargingStationDetailTabType.aggregated];
   const defaultTab = advanced
     ? ChargingStationDetailTabType.evses
@@ -66,7 +70,9 @@ export const ChargingStationDetailTabsCard = ({ id }: { id: number }) => {
     <Card>
       <CardContent>
         <Tabs
-          value={tab && visibleTabs.includes(tab as ChargingStationDetailTabType) ? tab : defaultTab}
+          value={
+            tab && visibleTabs.includes(tab as ChargingStationDetailTabType) ? tab : defaultTab
+          }
           onValueChange={(selectedTab: string) => setTab(selectedTab)}
         >
           <TabsList>
@@ -75,7 +81,7 @@ export const ChargingStationDetailTabsCard = ({ id }: { id: number }) => {
                 {translate('ChargingStations.tabs.evses')}
               </TabsTrigger>
             )}
-            {advanced && (
+            {advanced && canReadOcpp && (
               <TabsTrigger value={ChargingStationDetailTabType.ocppMessages}>
                 {translate('ChargingStations.tabs.ocppMessages')}
               </TabsTrigger>
@@ -113,12 +119,8 @@ export const ChargingStationDetailTabsCard = ({ id }: { id: number }) => {
 
           <TabsContent value={ChargingStationDetailTabType.ocppMessages} className={cardTabsStyle}>
             <CanAccess
-              resource={ResourceType.CHARGING_STATIONS}
-              action={ActionType.ACCESS}
-              params={{
-                id,
-                accessType: ChargingStationAccessType.OCPP_MESSAGES,
-              }}
+              resource="OCPPMessages"
+              action={ActionType.LIST}
               fallback={
                 <p className="text-muted-foreground">
                   {translate('ChargingStations.tabs.noOcppLogsPermission')}

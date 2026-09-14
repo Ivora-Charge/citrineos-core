@@ -1,17 +1,3 @@
-# SPDX-FileCopyrightText: 2026 Contributors to the CitrineOS Project
-#
-# SPDX-License-Identifier: Apache-2.0
-# Platform-wide key/value configuration (core migration
-# 20260908010000-create-platform-settings). Edited on /settings/platform in the
-# operator UI. Platform admins reach Hasura with the admin role, which bypasses
-# permissions, so only platform-support (read-only) needs an entry here. Tenant
-# roles get nothing: these values are not theirs to see or change.
 table:
   name: PlatformSettings
   schema: public
-select_permissions:
-  - role: platform-support
-    permission:
-      columns: '*'
-      filter: {}
-      allow_aggregations: true

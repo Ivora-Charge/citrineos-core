@@ -78,6 +78,14 @@ export const MainMenu = ({ activeSection }: MainMenuProps) => {
     resource: ResourceType.TENANTS,
     action: ActionType.LIST,
   });
+  const { data: canManageBusiness } = useCan({
+    resource: ResourceType.TENANTS,
+    action: ActionType.EDIT,
+  });
+  const { data: canViewPlatform } = useCan({
+    resource: ResourceType.PLATFORM_SETTINGS,
+    action: ActionType.SHOW,
+  });
 
   // Simple mode (the default) is the tenant-operator surface: chargers,
   // sessions, pricing, business. Everything topology/OCPP/roaming lives
@@ -146,14 +154,18 @@ export const MainMenu = ({ activeSection }: MainMenuProps) => {
           },
         ]
       : []),
-    {
-      key: `/${MenuSection.SETTINGS}/business`,
-      label: 'Business',
-      icon: <Building2 className={sidebarIconSize} />,
-    },
+    ...(canManageBusiness?.can
+      ? [
+          {
+            key: `/${MenuSection.SETTINGS}/business`,
+            label: 'Business',
+            icon: <Building2 className={sidebarIconSize} />,
+          },
+        ]
+      : []),
     // Platform-wide configuration: platform staff only (same gate as Tenants),
     // shown in simple mode too so admins can reach it without the toggle.
-    ...(canListTenants?.can
+    ...(canViewPlatform?.can
       ? [
           {
             key: `/${MenuSection.SETTINGS}/platform`,

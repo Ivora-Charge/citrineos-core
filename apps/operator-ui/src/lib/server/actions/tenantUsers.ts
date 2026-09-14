@@ -4,7 +4,7 @@
 'use server';
 
 import { authedAction, ForbiddenError, type ActionResult } from '@lib/utils/action-guard';
-import { hasPlatformRole } from '@lib/utils/csms-claims';
+import { hasPlatformRole, normalizeCsmsGrantRoles } from '@lib/utils/csms-claims';
 import config from '@lib/utils/config';
 import {
   csmsClaimsOf,
@@ -85,8 +85,7 @@ function toTenantUser(user: SupabaseUser, env: string): TenantUser {
  * screen; the claims are written right after (the invite cannot set
  * app_metadata itself).
  *
- * Every user also gets tenant-viewer: it is Hasura's default role, so it must
- * be in every token's allowed-roles (see the claims_map in the compose file).
+ * Support-only grants never gain a tenant role or a home tenant.
  */
 export async function inviteUserAction(
   input: InviteUserInput,
@@ -124,7 +123,7 @@ export async function inviteUserAction(
       throw new Error('tenantId is required for tenant roles');
     }
 
-    const roles = [...new Set([input.role, 'tenant-viewer'])];
+    const roles = normalizeCsmsGrantRoles([input.role]);
     const claims = { roles, tenant_id: targetTenantId };
 
     const existing = await findUserByEmail(email);
@@ -164,13 +163,16 @@ export async function inviteUserAction(
   });
 }
 
-/** List the users whose claims bind them to a tenant. Platform staff may
- * inspect any tenant; tenant admins only their own. */
+/** Membership details require management access. Tenant admins are limited
+ * to their own tenant; regular viewers and support cannot list members. */
 export async function listTenantUsersAction(tenantId: string): Promise<ActionResult<TenantUser[]>> {
   return authedAction<TenantUser[]>(async (session) => {
     const env = csmsEnv();
     const callerRoles = session.user.roles ?? [];
-    if (!hasPlatformRole(callerRoles) && session.user.tenantId !== tenantId) {
+    if (
+      (!isPlatformAdmin(callerRoles) && !callerRoles.includes('tenant-admin')) ||
+      (!isPlatformAdmin(callerRoles) && session.user.tenantId !== tenantId)
+    ) {
       throw new ForbiddenError('Not allowed to inspect other tenants');
     }
     const users = await listUsersForTenant(env, tenantId);

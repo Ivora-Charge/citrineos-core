@@ -123,7 +123,17 @@ const mapTenant = (record: Record<string, unknown> | undefined): BusinessForm =>
   };
 };
 
-export const BusinessSettings = () => {
+export const BusinessSettings = () => (
+  <CanAccess
+    resource={ResourceType.TENANTS}
+    action={ActionType.EDIT}
+    fallback={<AccessDeniedFallback />}
+  >
+    <BusinessSettingsForm />
+  </CanAccess>
+);
+
+const BusinessSettingsForm = () => {
   const tenantId = useTenantId();
   const [syncing, setSyncing] = useState(false);
   const [connecting, setConnecting] = useState(false);

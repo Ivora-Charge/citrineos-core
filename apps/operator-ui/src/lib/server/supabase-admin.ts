@@ -18,7 +18,12 @@
 // whole `csms` object, and nothing else in app_metadata (analytics' `plan`,
 // `role`) is ever sent.
 
-import { PLATFORM_ROLES, VALID_ROLES, normalizeCsmsGrantRoles } from '@lib/utils/csms-claims';
+import {
+  PLATFORM_ROLES,
+  VALID_ROLES,
+  hasTenantAccess,
+  normalizeCsmsGrantRoles,
+} from '@lib/utils/csms-claims';
 import { assertTestEnvironment } from '@lib/utils/environment-safety';
 
 const ANALYTICS_URL = (process.env.ANALYTICS_URL || 'https://analytics.ivoracharge.com').replace(
@@ -146,14 +151,12 @@ function assertValidClaims(claims: CsmsEnvClaims): void {
   }
   const bad = claims.roles.filter((r) => !VALID_ROLES.includes(r));
   if (bad.length) throw new Error(`Unknown role(s): ${bad.join(', ')}`);
-  const platform = claims.roles.some((r) => (PLATFORM_ROLES as readonly string[]).includes(r));
-  if (!platform && !(typeof claims.tenant_id === 'string' && claims.tenant_id.trim() !== '')) {
+  const platform = claims.roles.some((r) => ['admin', 'platform-admin'].includes(r));
+  const tenantRole = claims.roles.some((r) => ['tenant-admin', 'tenant-viewer'].includes(r));
+  if (!platform && tenantRole && !(typeof claims.tenant_id === 'string' && /^[1-9]\d{0,8}$/.test(claims.tenant_id))) {
     throw new Error('tenant_id is required for users without a platform role');
   }
-  // Hasura's default role literal must be in every user's allowed roles.
-  if (!claims.roles.includes('tenant-viewer')) {
-    throw new Error('roles must include tenant-viewer (Hasura default role)');
-  }
+  // Hasura selects its default from the grant's roles; support needs no tenant role.
 }
 
 /**
@@ -184,7 +187,11 @@ export async function writeCsmsClaims(
 
   if (claims) {
     const next: CsmsEnvClaims = { roles: [...new Set(claims.roles)] };
-    if (typeof claims.tenant_id === 'string' && claims.tenant_id.trim() !== '') {
+    if (
+      hasTenantAccess(claims.roles) &&
+      typeof claims.tenant_id === 'string' &&
+      claims.tenant_id.trim() !== ''
+    ) {
       next.tenant_id = claims.tenant_id.trim();
     }
     csms[env] = next;

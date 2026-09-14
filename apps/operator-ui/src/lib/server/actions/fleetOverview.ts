@@ -3,12 +3,12 @@
 // SPDX-License-Identifier: Apache-2.0
 'use server';
 
-import { authedAction, type ActionResult } from '@lib/utils/action-guard';
+import { authedAction, ForbiddenError, type ActionResult } from '@lib/utils/action-guard';
+import { hasPlatformAdminRole } from '@lib/utils/csms-claims';
 import { hasuraAdmin } from '@lib/server/hasura';
 
-// Cross-tenant fleet health for Ivora support staff (multi-tenant Phase 7).
-// Admin-secret reads, gated here to platform roles -- tenant users never see
-// other tenants' fleet state.
+// Fleet health with tenant names. Admin-secret reads require platform admin;
+// support-only accounts cannot use this action to recover tenant profiles.
 
 export interface FleetOverview {
   offline: Array<{ station: string; tenant: string; since: string }>;
@@ -54,12 +54,8 @@ const FLEET_QUERY = `
 export async function fleetOverviewAction(): Promise<ActionResult<FleetOverview>> {
   return authedAction<FleetOverview>(async (session) => {
     const roles = session.user.roles ?? [];
-    if (
-      !roles.includes('platform-admin') &&
-      !roles.includes('platform-support') &&
-      !roles.includes('admin')
-    ) {
-      throw new Error('Platform staff only');
+    if (!hasPlatformAdminRole(roles)) {
+      throw new ForbiddenError('Tenant fleet details require a platform administrator');
     }
 
     const data = await hasuraAdmin<any>(FLEET_QUERY);

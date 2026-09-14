@@ -19,7 +19,7 @@ import config from '@/lib/utils/config';
 import { type AuthProvider } from '@refinedev/core';
 import { HasuraHeader, HasuraRole } from '@lib/utils/hasura.types';
 import { parseJwt } from '@lib/utils/jwt';
-import { readCsmsClaims, type CsmsClaims } from '@lib/utils/csms-claims';
+import { readCsmsClaims, hasFleetAccess, type CsmsClaims } from '@lib/utils/csms-claims';
 import { readBillingBlock } from '@lib/utils/billing-claims';
 import { createPlatformRoleRefreshGuard } from '@lib/utils/platform-role-refresh';
 import { getBrowserSupabase, recordExplicitTestSignIn, recordTestSignOut } from '@lib/supabase/browser';
@@ -91,7 +91,7 @@ const current = async (): Promise<Current | null> => {
 };
 
 const usable = (c: Current | null): c is Current & { csms: CsmsClaims } =>
-  !!c && !!c.csms && !c.blocked;
+  !!c && !!c.csms && hasFleetAccess(c.csms) && !c.blocked;
 
 export const createKeycloakAuthProvider = (): AuthProvider & AuthenticationContextProvider => {
   const getPermissions = async (): Promise<KeycloakPermissions> => {
@@ -184,7 +184,7 @@ export const createKeycloakAuthProvider = (): AuthProvider & AuthenticationConte
       platformRoleRefresh.resetAfterExplicitSignIn();
       recordExplicitTestSignIn();
       const claims = parseJwt(data.session.access_token) ?? {};
-      if (!readCsmsClaims(claims, config.csmsEnv)) {
+      if (!hasFleetAccess(readCsmsClaims(claims, config.csmsEnv))) {
         // Signed in to the Ivora account, but it has no grant for this
         // console. The session is left in place (it is valid for analytics);
         // middleware keeps this app closed to it.
@@ -214,7 +214,7 @@ export const createKeycloakAuthProvider = (): AuthProvider & AuthenticationConte
       if (!c) {
         return { authenticated: false, logout: true, redirectTo: '/login' };
       }
-      if (!c.csms) {
+      if (!c.csms || !hasFleetAccess(c.csms)) {
         return { authenticated: false, logout: true, redirectTo: '/login?error=NoAccess' };
       }
       if (c.blocked) {

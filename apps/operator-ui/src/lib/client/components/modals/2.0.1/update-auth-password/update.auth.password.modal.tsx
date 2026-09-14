@@ -18,6 +18,7 @@ import { useMemo, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { useTranslate } from '@refinedev/core';
 import z from 'zod';
+import { useTenantId } from '@lib/client/hooks/useTenantId';
 import { FormButtonVariants } from '@lib/client/components/buttons/form.button';
 
 interface UpdateAuthPasswordModalProps {
@@ -31,6 +32,7 @@ type UpdateAuthPasswordFormData = {
 
 export const UpdateAuthPasswordModal = ({ station }: UpdateAuthPasswordModalProps) => {
   const dispatch = useDispatch();
+  const tenantId = useTenantId();
   const translate = useTranslate();
   const [loading, setLoading] = useState<boolean>(false);
 
@@ -74,7 +76,7 @@ export const UpdateAuthPasswordModal = ({ station }: UpdateAuthPasswordModalProp
 
     triggerMessageAndHandleResponse<MessageConfirmation>({
       translate,
-      url: `/configuration/password`,
+      url: `/configuration/password?tenantId=${tenantId}`,
       data,
       setLoading,
       ocppVersion: null,

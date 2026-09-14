@@ -34,7 +34,7 @@ import { buttonIconSize } from '@lib/client/styles/icon';
 
 const INVITE_ROLES = [
   { value: 'tenant-admin', label: 'Tenant admin (pricing, settings, invites)' },
-  { value: 'tenant-viewer', label: 'Tenant viewer (read-only)' },
+  { value: 'tenant-viewer', label: 'Regular tenant access (view only)' },
 ];
 
 /** Platform-staff page: one tenant's profile + the Supabase users whose CSMS

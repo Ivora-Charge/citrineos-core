@@ -35,15 +35,82 @@ insert_permissions:
 - role: user
   permission:
     check:
-      tenantId:
-        _eq: x-hasura-tenant-id
+      _and:
+      - tenantId:
+          _eq: x-hasura-tenant-id
+      - &id001
+        _or:
+        - bootConfigId:
+            _is_null: true
+        - Boot:
+            tenantId:
+              _eq: x-hasura-tenant-id
+      - &id002
+        _or:
+        - stationId:
+            _is_null: true
+        - ChargingStation:
+            tenantId:
+              _eq: x-hasura-tenant-id
+      - &id003
+        _or:
+        - componentId:
+            _is_null: true
+        - Component:
+            tenantId:
+              _eq: x-hasura-tenant-id
+      - &id004
+        _or:
+        - evseDatabaseId:
+            _is_null: true
+        - EvseType:
+            tenantId:
+              _eq: x-hasura-tenant-id
+      - &id005
+        _or:
+        - variableId:
+            _is_null: true
+        - Variable:
+            tenantId:
+              _eq: x-hasura-tenant-id
     columns: '*'
   comment: ''
 - role: tenant-admin
   permission:
     check:
-      tenantId:
-        _eq: x-hasura-tenant-id
+      _and:
+      - tenantId:
+          _eq: x-hasura-tenant-id
+      - _or:
+        - bootConfigId:
+            _is_null: true
+        - Boot:
+            tenantId:
+              _eq: x-hasura-tenant-id
+      - _or:
+        - stationId:
+            _is_null: true
+        - ChargingStation:
+            tenantId:
+              _eq: x-hasura-tenant-id
+      - _or:
+        - componentId:
+            _is_null: true
+        - Component:
+            tenantId:
+              _eq: x-hasura-tenant-id
+      - _or:
+        - evseDatabaseId:
+            _is_null: true
+        - EvseType:
+            tenantId:
+              _eq: x-hasura-tenant-id
+      - _or:
+        - variableId:
+            _is_null: true
+        - Variable:
+            tenantId:
+              _eq: x-hasura-tenant-id
     columns: '*'
 select_permissions:
 - role: user
@@ -65,8 +132,38 @@ select_permissions:
   permission:
     columns: '*'
     filter:
-      tenantId:
-        _eq: x-hasura-tenant-id
+      _and:
+      - tenantId:
+          _eq: x-hasura-tenant-id
+      - _or:
+        - dataType:
+            _is_null: true
+        - dataType:
+            _neq: passwordString
+      - _not:
+          Variable:
+            _or:
+            - name:
+                _ilike: '%password%'
+            - name:
+                _ilike: '%passwd%'
+            - name:
+                _ilike: '%secret%'
+            - name:
+                _ilike: '%authorization%key%'
+            - name:
+                _ilike: '%private%key%'
+            - name:
+                _ilike: '%api%key%'
+            - name:
+                _ilike: '%token%'
+            - name:
+                _ilike: '%credential%'
+      - _not:
+          Variable:
+            VariableCharacteristic:
+              dataType:
+                _eq: passwordString
     allow_aggregations: true
 - role: platform-support
   permission:
@@ -81,8 +178,14 @@ update_permissions:
       tenantId:
         _eq: x-hasura-tenant-id
     check:
-      tenantId:
-        _eq: x-hasura-tenant-id
+      _and:
+      - tenantId:
+          _eq: x-hasura-tenant-id
+      - *id001
+      - *id002
+      - *id003
+      - *id004
+      - *id005
   comment: ''
 - role: tenant-admin
   permission:
@@ -91,8 +194,39 @@ update_permissions:
       tenantId:
         _eq: x-hasura-tenant-id
     check:
-      tenantId:
-        _eq: x-hasura-tenant-id
+      _and:
+      - tenantId:
+          _eq: x-hasura-tenant-id
+      - _or:
+        - bootConfigId:
+            _is_null: true
+        - Boot:
+            tenantId:
+              _eq: x-hasura-tenant-id
+      - _or:
+        - stationId:
+            _is_null: true
+        - ChargingStation:
+            tenantId:
+              _eq: x-hasura-tenant-id
+      - _or:
+        - componentId:
+            _is_null: true
+        - Component:
+            tenantId:
+              _eq: x-hasura-tenant-id
+      - _or:
+        - evseDatabaseId:
+            _is_null: true
+        - EvseType:
+            tenantId:
+              _eq: x-hasura-tenant-id
+      - _or:
+        - variableId:
+            _is_null: true
+        - Variable:
+            tenantId:
+              _eq: x-hasura-tenant-id
 delete_permissions:
 - role: user
   permission:

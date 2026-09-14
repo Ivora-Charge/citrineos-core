@@ -7,10 +7,15 @@ import { createRemoteJWKSet, jwtVerify } from 'jose';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { authCookieOptions } from '@lib/utils/auth-cookie';
-import { readCsmsClaims } from '@lib/utils/csms-claims';
+import { readCsmsClaims, hasFleetAccess } from '@lib/utils/csms-claims';
+import { currentAuthorization, AuthorizationUnavailableError } from '@lib/utils/live-authorization';
+import { csmsPageDenied } from '@lib/utils/csms-access';
 import { readBillingBlock } from '@lib/utils/billing-claims';
 import { assertTestEnvironment } from '@lib/utils/environment-safety';
-import { hasDuplicateTestSessionCookies, hasTestLogoutMarker } from '@lib/utils/test-auth-cookie-migration';
+import {
+  hasDuplicateTestSessionCookies,
+  hasTestLogoutMarker,
+} from '@lib/utils/test-auth-cookie-migration';
 
 /**
  * Server-side authentication middleware.
@@ -91,25 +96,33 @@ export async function middleware(request: NextRequest) {
       cooldownDuration: 30_000,
       cacheMaxAge: 600_000,
     });
-    let payload: unknown = null;
+    let payload: Record<string, unknown> | null = null;
     try {
       payload = (await jwtVerify(session.access_token, jwks, { issuer, audience: 'authenticated' }))
         .payload;
+      payload = await currentAuthorization(session.access_token, payload, supabaseUrl, anonKey);
+      if (!payload) reason = 'SessionExpired';
     } catch (err) {
       const code = (err as { code?: string })?.code;
-      if (code === 'ERR_JWKS_TIMEOUT' || err instanceof TypeError) {
-        // Key set unreachable: let the page shell render on the unverified
-        // claims. Every data call (Hasura, server actions, the core proxy)
-        // still verifies the signature itself.
-        console.warn('[auth] JWKS unavailable, rendering shell on unverified claims');
-        payload = decodePayload(session.access_token);
+      if (
+        code === 'ERR_JWKS_TIMEOUT' ||
+        err instanceof TypeError ||
+        err instanceof AuthorizationUnavailableError
+      ) {
+        return new NextResponse('Authentication unavailable', { status: 503 });
       } else {
         reason = 'SessionExpired';
       }
     }
     if (payload && !reason) {
-      if (!readCsmsClaims(payload, csmsEnv)) reason = 'NoAccess';
+      const csms = readCsmsClaims(payload, csmsEnv);
+      if (!csms || !hasFleetAccess(csms)) reason = 'NoAccess';
       else if (readBillingBlock(payload)) reason = 'Suspended';
+      else if (csmsPageDenied(csms.roles, request.nextUrl.pathname)) {
+        const denied = new NextResponse('Access denied', { status: 403 });
+        for (const cookie of response.cookies.getAll()) denied.cookies.set(cookie);
+        return denied;
+      }
     }
   }
 
@@ -119,16 +132,6 @@ export async function middleware(request: NextRequest) {
   }
   if (reason) return toLogin(request, reason, response);
   return response;
-}
-
-function decodePayload(token: string): unknown {
-  try {
-    const part = token.split('.')[1] ?? '';
-    const json = atob(part.replace(/-/g, '+').replace(/_/g, '/'));
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
 }
 
 function toLogin(request: NextRequest, reason: Reason, response: NextResponse | null) {

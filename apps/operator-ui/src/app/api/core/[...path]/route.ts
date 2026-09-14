@@ -2,44 +2,21 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-/**
- * Authenticated proxy in front of the CitrineOS core REST API
- * (docs/identity-consolidation-plan.md 2.6).
- *
- * The browser's BaseRestClient is built with NEXT_PUBLIC_CITRINE_CORE_URL set
- * to /api/core, so every core call (/api/core/ocpp/<version>/... and
- * /api/core/data/...) lands here instead of on a public core-api edge. Core
- * runs with localByPass and treats any caller as admin of tenant 1 without
- * ever comparing the tenantId query to anything, so this handler is the
- * authorization boundary:
- *
- *  1. a valid NextAuth session is required (401 otherwise);
- *  2. anything under ocpp/ and any non-GET under data/ needs admin,
- *     platform-admin or tenant-admin; read-only roles (tenant-viewer,
- *     platform-support) may only GET under data/;
- *  3. callers without a platform role must scope every request to their own
- *     tenant: the tenantId query parameter must be present and equal the
- *     session tenant, and a tenantId in the JSON body must match too (403);
- *  4. the request is forwarded to CITRINE_CORE_INTERNAL_URL with the same
- *     method, the raw body and only the Content-Type header -- never the
- *     session cookie or the bearer token;
- *  5. every non-GET is written to the audit log.
- *
- * middleware.ts also covers /api/core/* (redirects without a session); the
- * checks here are the ones that matter and do not rely on it.
- */
+/** Authenticated core gateway. Customer operations are explicitly allowlisted,
+ * checked against current grants, and pinned to a charger owned by that tenant.
+ * Core REST is private; the gateway never forwards a caller's credentials. */
 
 import { type NextRequest, NextResponse } from 'next/server';
 import config from '@lib/utils/config';
 import { audit } from '@lib/server/audit';
 import { AuthUnavailableError, getCsmsSession } from '@lib/server/session';
-import { hasAnyRole, hasPlatformRole, MUTATING_ROLES, VALID_ROLES } from '@lib/utils/csms-claims';
+import { authorizeCoreRequest } from '@lib/utils/core-access';
+import { hasuraAdmin } from '@lib/server/hasura';
 
 export const dynamic = 'force-dynamic';
 
 type RouteContext = { params: Promise<{ path: string[] }> };
 
-const ALLOWED_ROOTS = new Set(['ocpp', 'data']);
 const NULL_BODY_STATUSES = new Set([204, 205, 304]);
 
 function problem(status: number, error: string) {
@@ -61,68 +38,53 @@ async function handle(req: NextRequest, ctx: RouteContext): Promise<NextResponse
   if (!session) {
     return problem(401, 'Unauthenticated');
   }
-  const roles: string[] = session.user.roles;
+  const roles = session.user.roles;
   const sessionTenantId = session.user.tenantId;
-  if (!hasAnyRole(roles, VALID_ROLES)) {
-    return problem(403, 'No CSMS role');
-  }
-
-  // Path. Segments arrive decoded; refuse anything that could re-route on
-  // the upstream side once re-joined ('' / '.' / '..'), and only the two
-  // roots core actually serves.
   const { path } = await ctx.params;
   const segments = Array.isArray(path) ? path : [];
-  if (segments.length === 0 || segments.some((s) => s === '' || s === '.' || s === '..')) {
-    return problem(400, 'Invalid path');
-  }
-  const root = segments[0];
-  if (!ALLOWED_ROOTS.has(root)) {
-    return problem(404, 'Not found');
-  }
-  const relPath = segments.map(encodeURIComponent).join('/');
-
-  // 2. Role.
-  const mutating = root === 'ocpp' || method !== 'GET';
-  if (mutating && !hasAnyRole(roles, MUTATING_ROLES)) {
-    return problem(403, 'Insufficient role');
-  }
-
-  // Body (read once; forwarded raw).
   const contentType = req.headers.get('content-type') ?? undefined;
   let rawBody: string | undefined;
+  let parsed: unknown;
   if (method !== 'GET' && method !== 'HEAD') {
     rawBody = await req.text();
-    if (rawBody === '') rawBody = undefined;
-  }
-
-  // 3. Tenant scoping for callers without a platform role.
-  const search = req.nextUrl.search;
-  const queryTenantId = req.nextUrl.searchParams.get('tenantId');
-  const platform = hasPlatformRole(roles);
-  if (!platform) {
-    if (!sessionTenantId) {
-      return problem(403, 'Session has no tenant');
-    }
-    if (queryTenantId === null || queryTenantId.trim() !== sessionTenantId) {
-      return problem(403, 'tenantId query parameter must equal your tenant');
-    }
-    if (rawBody !== undefined && (contentType ?? '').toLowerCase().includes('application/json')) {
-      let parsed: unknown;
+    if (!rawBody) rawBody = undefined;
+    if (rawBody) {
+      if (rawBody.length > 1_048_576) return problem(413, 'Request too large');
+      if (!(contentType ?? '').toLowerCase().includes('application/json')) {
+        return problem(415, 'JSON content type required');
+      }
       try {
         parsed = JSON.parse(rawBody);
       } catch {
         return problem(400, 'Malformed JSON body');
       }
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        const bodyTenantId = (parsed as { tenantId?: unknown }).tenantId;
-        if (bodyTenantId !== undefined && bodyTenantId !== null) {
-          if (String(bodyTenantId) !== sessionTenantId) {
-            return problem(403, 'tenantId in body must equal your tenant');
-          }
-        }
-      }
     }
   }
+  const authorization = authorizeCoreRequest(
+    session.user,
+    method,
+    segments,
+    req.nextUrl.searchParams,
+    parsed,
+  );
+  if (!authorization.allowed) return problem(authorization.status, authorization.error);
+  if (authorization.station) {
+    try {
+      const result = await hasuraAdmin<{ ChargingStations: Array<{ id: string }> }>(
+        `query OwnedCharger($name: String!, $tenant: Int!) {
+          ChargingStations(where: {ocppConnectionName: {_eq: $name}, tenantId: {_eq: $tenant}}, limit: 1) { id }
+        }`,
+        { name: authorization.station, tenant: Number(authorization.tenantId) },
+      );
+      if (!result.ChargingStations.length)
+        return problem(403, 'Charger is not assigned to your tenant');
+    } catch {
+      return problem(503, 'Unable to verify charger ownership');
+    }
+  }
+  const relPath = segments.map(encodeURIComponent).join('/');
+  const search = req.nextUrl.search;
+  const queryTenantId = req.nextUrl.searchParams.get('tenantId');
 
   // 4. Forward to core over the internal network.
   const base = config.citrineCoreInternalUrl;
@@ -171,7 +133,7 @@ async function handle(req: NextRequest, ctx: RouteContext): Promise<NextResponse
       tenantId: auditTenant && /^\d+$/.test(auditTenant) ? auditTenant : undefined,
       action: 'core.request',
       target: `${method} /${segments.join('/')}`,
-      detail: { method, path: `/${segments.join('/')}`, query: search || null, status },
+      detail: { method, path: `/${segments.join('/')}`, status },
     });
   }
 

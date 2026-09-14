@@ -26,7 +26,19 @@ array_relationships:
 select_permissions:
 - role: user
   permission:
-    columns: '*'
+    columns:
+    - id
+    - host
+    - port
+    - pingInterval
+    - protocols
+    - messageTimeout
+    - securityProfile
+    - allowUnknownChargingStations
+    - dynamicTenantResolution
+    - tenantId
+    - createdAt
+    - updatedAt
     filter:
       tenantId:
         _eq: x-hasura-tenant-id
@@ -34,14 +46,38 @@ select_permissions:
   comment: ''
 - role: tenant-admin
   permission:
-    columns: '*'
+    columns:
+    - id
+    - host
+    - port
+    - pingInterval
+    - protocols
+    - messageTimeout
+    - securityProfile
+    - allowUnknownChargingStations
+    - dynamicTenantResolution
+    - tenantId
+    - createdAt
+    - updatedAt
     filter:
       tenantId:
         _eq: x-hasura-tenant-id
     allow_aggregations: true
 - role: tenant-viewer
   permission:
-    columns: '*'
+    columns:
+    - id
+    - host
+    - port
+    - pingInterval
+    - protocols
+    - messageTimeout
+    - securityProfile
+    - allowUnknownChargingStations
+    - dynamicTenantResolution
+    - tenantId
+    - createdAt
+    - updatedAt
     filter:
       tenantId:
         _eq: x-hasura-tenant-id

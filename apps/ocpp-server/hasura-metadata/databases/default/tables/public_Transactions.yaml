@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Contributors to the CitrineOS Project
 #
 # SPDX-License-Identifier: Apache-2.0
+# Money received for this transaction, from the payment service's
+# payment_transaction_revenue view (subunit amounts; see that table's yaml).
 table:
   name: Transactions
   schema: public
@@ -40,8 +42,6 @@ object_relationships:
 - name: Tenant
   using:
     foreign_key_constraint_on: tenantId
-# Money received for this transaction, from the payment service's
-# payment_transaction_revenue view (subunit amounts; see that table's yaml).
 - name: Revenue
   using:
     manual_configuration:

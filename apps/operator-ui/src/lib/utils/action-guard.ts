@@ -1,7 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Contributors to the CitrineOS Project
 //
 // SPDX-License-Identifier: Apache-2.0
-import { hasAnyRole, hasPlatformRole } from '@lib/utils/csms-claims';
+import {
+  hasAnyRole,
+  hasPlatformRole,
+  hasFleetAccess,
+  validTenantId,
+} from '@lib/utils/csms-claims';
 import { AuthUnavailableError, getCsmsSession, type CsmsSession } from '@lib/server/session';
 
 /** The verified caller of a server action (see @lib/server/session). */
@@ -42,6 +47,10 @@ export async function authedAction<T>(
 
   if (!session?.user) {
     return { success: false, error: 'Unauthenticated', code: 'UNAUTHORIZED' };
+  }
+
+  if (!hasFleetAccess(session.user)) {
+    return { success: false, error: 'No tenant fleet access assigned', code: 'FORBIDDEN' };
   }
 
   try {
@@ -113,6 +122,8 @@ export function resolveActingTenantId(session: AuthedSession, override?: string)
   const own = session.user.tenantId?.trim() || undefined;
   const wanted = override?.trim() || undefined;
 
+  if (!hasFleetAccess(session.user)) throw new ForbiddenError('No tenant fleet access assigned');
+  if (wanted && !validTenantId(wanted)) throw new ForbiddenError('Invalid tenant');
   if (hasPlatformRole(session.user.roles)) {
     const tenantId = wanted ?? own;
     if (!tenantId) {

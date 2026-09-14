@@ -6,14 +6,40 @@
 import {
   authedActionWithRoles,
   resolveActingTenantId,
+  ForbiddenError,
   type ActionResult,
 } from '@lib/utils/action-guard';
-import { MUTATING_ROLES, PLATFORM_ROLES } from '@lib/utils/csms-claims';
+import { MUTATING_ROLES } from '@lib/utils/csms-claims';
 import config from '@lib/utils/config';
+import { hasuraAdmin } from '@lib/server/hasura';
 
 // Who may push to the payment catalog: tenant admins (own tenant) and platform
 // staff (any tenant, named explicitly). Read-only roles are refused.
-const SYNC_ROLES: readonly string[] = [...new Set([...MUTATING_ROLES, ...PLATFORM_ROLES])];
+const SYNC_ROLES = MUTATING_ROLES;
+
+const CATALOG_OWNERSHIP_QUERY = `
+  query CatalogOwnership($tenantId: Int!, $names: [String!]!) {
+    Tenants_by_pk(id: $tenantId) {
+      name businessName stripeAccountId businessAddress businessPostalCode
+      businessCity businessState businessCountry countryCode
+    }
+    ChargingStations(where: {tenantId: {_eq: $tenantId}, ocppConnectionName: {_in: $names}}) {
+      ocppConnectionName tenantId
+      Location { id tenantId name address postalCode city state country }
+      Evses(where: {tenantId: {_eq: $tenantId}}) { evseTypeId evseId }
+    }
+  }
+`;
+
+interface CatalogOwnership {
+  Tenants_by_pk: Record<string, string | null> | null;
+  ChargingStations: Array<{
+    ocppConnectionName: string;
+    tenantId: number;
+    Location: ({ id: number; tenantId: number } & Record<string, any>) | null;
+    Evses: Array<{ evseTypeId: number | null; evseId: number | null }>;
+  }>;
+}
 
 // One operator -> location -> tariff -> evse -> connector chain to upsert.
 // Mirrors CatalogSyncRequest in citrineos-payment/schemas/catalog.py. tenant_id
@@ -81,10 +107,68 @@ export async function syncPaymentCatalogAction(
     // it. There is deliberately no fallback to config.tenantId: a session
     // without a tenant and without an explicit platform override is refused.
     const tenantId = resolveActingTenantId(session, options?.tenantIdOverride);
+    if (!Array.isArray(entries) || entries.length > 500) throw new Error('Invalid catalog batch');
+    if (!entries.length) return [];
+    for (const entry of entries) {
+      if (!entry || typeof entry.station_id !== 'string' || !entry.station_id ||
+          !Number.isSafeInteger(entry.ocpp_evse_id) || entry.ocpp_evse_id < 0) {
+        throw new ForbiddenError('Invalid catalog target');
+      }
+    }
+    const ownership = await hasuraAdmin<CatalogOwnership>(CATALOG_OWNERSHIP_QUERY, {
+      tenantId: Number(tenantId), names: [...new Set(entries.map((entry) => entry.station_id))],
+    });
+    const tenant = ownership.Tenants_by_pk;
+    if (!tenant?.stripeAccountId) throw new Error('No Stripe account configured for this tenant');
+    const stations = new Map(ownership.ChargingStations.map((station) => [station.ocppConnectionName, station]));
+    // Validate the complete batch before the first external mutation. Every
+    // identity and payment destination is then built from trusted database rows.
+    const verifiedEntries = entries.map((entry): PaymentCatalogSyncEntry => {
+      const station = stations.get(entry.station_id);
+      if (!station || station.tenantId !== Number(tenantId) ||
+          !station.Evses.some((evse) => Number(evse.evseTypeId ?? evse.evseId) === entry.ocpp_evse_id)) {
+        throw new ForbiddenError('Catalog equipment is not available in this tenant');
+      }
+      const location = station.Location;
+      if (location && location.tenantId !== Number(tenantId)) throw new ForbiddenError('Invalid station location');
+      const evseId = `${station.ocppConnectionName}-${entry.ocpp_evse_id}`;
+      const locationId = `tenant-${tenantId}${location ? `-loc-${location.id}` : ''}`;
+      if (entry.evse_id !== evseId || entry.location_id !== locationId ||
+          (entry.connector_id !== undefined && entry.connector_id !== `${evseId}-1`) ||
+          entry.stripe_account_id !== tenant.stripeAccountId) {
+        throw new ForbiddenError('Catalog identity does not match the tenant equipment');
+      }
+      return {
+        operator_name: tenant.businessName || tenant.name || 'Operator',
+        stripe_account_id: tenant.stripeAccountId,
+        location_id: locationId,
+        address: (location ? location.address : tenant.businessAddress) || '',
+        postal_code: (location ? location.postalCode : tenant.businessPostalCode) || '',
+        city: (location ? location.city : tenant.businessCity) || '',
+        state: (location ? location.state : tenant.businessState) || '',
+        country: (location ? location.country : tenant.businessCountry || tenant.countryCode) || '',
+        ...(location?.name ? { location_name: location.name } : {}),
+        station_id: station.ocppConnectionName,
+        ocpp_evse_id: entry.ocpp_evse_id,
+        evse_id: evseId,
+        connector_id: `${evseId}-1`,
+        currency: entry.currency,
+        tax_rate: entry.tax_rate,
+        authorization_amount: entry.authorization_amount,
+        price_kwh: entry.price_kwh,
+        price_minute: entry.price_minute,
+        price_session: entry.price_session,
+        payment_fee: entry.payment_fee,
+        power_type: entry.power_type,
+        max_voltage: entry.max_voltage,
+        max_amperage: entry.max_amperage,
+        max_power_watts: entry.max_power_watts,
+      };
+    });
     const url = `${baseUrl.replace(/\/$/, '')}/api/catalog/sync`;
 
     const results: PaymentCatalogSyncResult[] = [];
-    for (const entry of entries) {
+    for (const entry of verifiedEntries) {
       try {
         const res = await fetch(url, {
           method: 'POST',
@@ -94,6 +178,7 @@ export async function syncPaymentCatalogAction(
           },
           body: JSON.stringify({ ...entry, tenant_id: tenantId }),
           cache: 'no-store',
+          signal: AbortSignal.timeout(10_000),
         });
         if (!res.ok) {
           const detail = await res.text().catch(() => '');

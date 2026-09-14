@@ -13,7 +13,7 @@ import dataProviderHasura, {
 } from '@refinedev/hasura';
 import { getHasuraAdminSecretAction } from '@lib/server/actions/getHasuraAdminSecretAction';
 import { ACTING_TENANT_KEY } from '@lib/client/hooks/useTenantId';
-import { hasPlatformRole } from '@lib/utils/csms-claims';
+import { hasPlatformAdminRole } from '@lib/utils/csms-claims';
 
 const requestMiddleware = async (request: any) => {
   const requestHeaders = {
@@ -96,7 +96,7 @@ const actingTenantFilter = async (
     const identity = (await authProvider?.getIdentity?.()) as
       | { tenantId?: string; roles?: string[] }
       | undefined;
-    if (!hasPlatformRole(identity?.roles)) return null;
+    if (!hasPlatformAdminRole(identity?.roles)) return null;
   } catch {
     return null;
   }

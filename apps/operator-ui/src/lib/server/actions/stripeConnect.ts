@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 'use server';
 
-import { authedAction, type ActionResult } from '@lib/utils/action-guard';
+import { authedAction, ForbiddenError, resolveActingTenantId, type AuthedSession, type ActionResult } from '@lib/utils/action-guard';
 import config from '@lib/utils/config';
 import { audit } from '@lib/server/audit';
 
@@ -64,20 +64,15 @@ async function paymentApi(path: string, init?: RequestInit) {
   return res.json();
 }
 
-function resolveTenant(session: any, requested?: number): number {
+function resolveTenant(session: AuthedSession, requested?: number): number {
   const roles: string[] = session.user.roles ?? [];
-  const own = Number(session.user.tenantId);
-  if (isPlatformAdmin(roles)) {
-    return requested ?? own ?? Number(config.tenantId);
+  if (!isPlatformAdmin(roles) && !roles.includes('tenant-admin')) {
+    throw new ForbiddenError('Only tenant or platform admins can manage Stripe onboarding');
   }
-  if (!roles.includes('tenant-admin')) {
-    throw new Error('Only tenant or platform admins can manage Stripe onboarding');
+  if (requested !== undefined && (!Number.isSafeInteger(requested) || requested <= 0)) {
+    throw new ForbiddenError('Invalid tenant');
   }
-  if (!own) throw new Error('Session has no tenant');
-  if (requested && requested !== own) {
-    throw new Error('Tenant admins can only onboard their own tenant');
-  }
-  return own;
+  return Number(resolveActingTenantId(session, requested === undefined ? undefined : String(requested)));
 }
 
 /** Create (or refresh) the hosted Stripe onboarding link for a tenant. The

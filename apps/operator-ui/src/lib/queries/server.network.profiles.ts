@@ -20,11 +20,6 @@ export const SERVER_NETWORK_PROFILE_LIST_QUERY = gql`
       messageTimeout
       securityProfile
       allowUnknownChargingStations
-      tlsKeyFilePath
-      tlsCertificateChainFilePath
-      mtlsCertificateAuthorityKeyFilePath
-      rootCACertificateFilePath
-      tenantPathMapping
       dynamicTenantResolution
     }
     ServerNetworkProfiles_aggregate(where: $where) {
@@ -46,11 +41,6 @@ export const SERVER_NETWORK_PROFILE_GET_QUERY = gql`
       messageTimeout
       securityProfile
       allowUnknownChargingStations
-      tlsKeyFilePath
-      tlsCertificateChainFilePath
-      mtlsCertificateAuthorityKeyFilePath
-      rootCACertificateFilePath
-      tenantPathMapping
       dynamicTenantResolution
     }
   }

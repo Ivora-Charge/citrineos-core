@@ -9,7 +9,6 @@ import {
   resolveActingTenantId,
   type ActionResult,
 } from '@lib/utils/action-guard';
-import { MUTATING_ROLES, PLATFORM_ROLES } from '@lib/utils/csms-claims';
 import config from '@lib/utils/config';
 import { hasuraAdmin } from '@lib/server/hasura';
 import { audit } from '@lib/server/audit';
@@ -35,7 +34,10 @@ const INVENTORY_TENANT_NAME = 'Ivora Inventory';
 
 // Who may claim: tenant admins (into their own tenant) and platform staff
 // (into any tenant, named via targetTenantId).
-const CLAIM_ROLES: readonly string[] = [...new Set([...MUTATING_ROLES, ...PLATFORM_ROLES])];
+// Serial numbers identify equipment; they do not prove a customer's right to
+// claim it. Platform provisioning remains available until activation credentials
+// bind inventory equipment to its intended tenant.
+const CLAIM_ROLES: readonly string[] = ['platform-admin', 'admin'];
 
 const isPlatformAdmin = (roles: string[]) =>
   roles.includes('platform-admin') || roles.includes('admin');
@@ -395,8 +397,8 @@ export async function listInventoryAction(): Promise<
 > {
   return authedAction(async (session) => {
     const roles = session.user.roles ?? [];
-    if (!isPlatformAdmin(roles) && !roles.includes('platform-support')) {
-      throw new Error('Platform staff only');
+    if (!isPlatformAdmin(roles)) {
+      throw new Error('Only platform admins can inspect inventory');
     }
     const invId = await inventoryTenantId();
     const data = await hasuraAdmin<{ ChargingStations: any[] }>(

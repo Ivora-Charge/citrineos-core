@@ -42,8 +42,27 @@ select_permissions:
   permission:
     columns: '*'
     filter:
-      tenantId:
-        _eq: x-hasura-tenant-id
+      _and:
+      - tenantId:
+          _eq: x-hasura-tenant-id
+      - _not:
+          _or:
+          - key:
+              _ilike: '%password%'
+          - key:
+              _ilike: '%passwd%'
+          - key:
+              _ilike: '%secret%'
+          - key:
+              _ilike: '%authorization%key%'
+          - key:
+              _ilike: '%private%key%'
+          - key:
+              _ilike: '%api%key%'
+          - key:
+              _ilike: '%token%'
+          - key:
+              _ilike: '%credential%'
     allow_aggregations: true
 - role: platform-support
   permission:

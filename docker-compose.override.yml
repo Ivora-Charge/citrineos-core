@@ -60,7 +60,7 @@ services:
       HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_GRAPHQL_ADMIN_SECRET:?missing from citrineos-core/.env}
       HASURA_GRAPHQL_ENABLE_CONSOLE: "false"
       HASURA_GRAPHQL_DEV_MODE: "false"
-      HASURA_GRAPHQL_JWT_SECRET: '{"jwk_url":"https://uoatfgdxafvetninytuu.supabase.co/auth/v1/.well-known/jwks.json","issuer":"https://uoatfgdxafvetninytuu.supabase.co/auth/v1","audience":"authenticated","claims_map":{"x-hasura-allowed-roles":{"path":"$$.app_metadata.csms.test.roles"},"x-hasura-default-role":"tenant-viewer","x-hasura-user-id":{"path":"$$.sub"},"x-hasura-tenant-id":{"path":"$$.app_metadata.csms.test.tenant_id","default":""}}}'
+      HASURA_GRAPHQL_JWT_SECRET: '{"jwk_url":"https://uoatfgdxafvetninytuu.supabase.co/auth/v1/.well-known/jwks.json","issuer":"https://uoatfgdxafvetninytuu.supabase.co/auth/v1","audience":"authenticated","claims_map":{"x-hasura-allowed-roles":{"path":"$$.app_metadata.csms.test.roles"},"x-hasura-default-role":{"path":"$$.app_metadata.csms.test.roles[0]"},"x-hasura-user-id":{"path":"$$.sub"},"x-hasura-tenant-id":{"path":"$$.app_metadata.csms.test.tenant_id","default":""}}}'
 
   citrine-ui:
     image: citrineos-operator-ui:local

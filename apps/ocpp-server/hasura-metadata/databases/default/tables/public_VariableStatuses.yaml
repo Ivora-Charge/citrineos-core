@@ -27,13 +27,6 @@ select_permissions:
       tenantId:
         _eq: x-hasura-tenant-id
     allow_aggregations: true
-- role: tenant-viewer
-  permission:
-    columns: '*'
-    filter:
-      tenantId:
-        _eq: x-hasura-tenant-id
-    allow_aggregations: true
 - role: platform-support
   permission:
     columns: '*'

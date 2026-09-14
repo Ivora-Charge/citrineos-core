@@ -50,15 +50,56 @@ insert_permissions:
 - role: user
   permission:
     check:
-      tenantId:
-        _eq: x-hasura-tenant-id
+      _and:
+      - tenantId:
+          _eq: x-hasura-tenant-id
+      - &id001
+        _or:
+        - groupAuthorizationId:
+            _is_null: true
+        - GroupAuthorization:
+            tenantId:
+              _eq: x-hasura-tenant-id
+      - &id002
+        _or:
+        - tariffId:
+            _is_null: true
+        - Tariff:
+            tenantId:
+              _eq: x-hasura-tenant-id
+      - &id003
+        _or:
+        - tenantPartnerId:
+            _is_null: true
+        - TenantPartner:
+            tenantId:
+              _eq: x-hasura-tenant-id
     columns: '*'
   comment: ''
 - role: tenant-admin
   permission:
     check:
-      tenantId:
-        _eq: x-hasura-tenant-id
+      _and:
+      - tenantId:
+          _eq: x-hasura-tenant-id
+      - _or:
+        - groupAuthorizationId:
+            _is_null: true
+        - GroupAuthorization:
+            tenantId:
+              _eq: x-hasura-tenant-id
+      - _or:
+        - tariffId:
+            _is_null: true
+        - Tariff:
+            tenantId:
+              _eq: x-hasura-tenant-id
+      - _or:
+        - tenantPartnerId:
+            _is_null: true
+        - TenantPartner:
+            tenantId:
+              _eq: x-hasura-tenant-id
     columns: '*'
 select_permissions:
 - role: user
@@ -96,8 +137,12 @@ update_permissions:
       tenantId:
         _eq: x-hasura-tenant-id
     check:
-      tenantId:
-        _eq: x-hasura-tenant-id
+      _and:
+      - tenantId:
+          _eq: x-hasura-tenant-id
+      - *id001
+      - *id002
+      - *id003
   comment: ''
 - role: tenant-admin
   permission:
@@ -106,8 +151,27 @@ update_permissions:
       tenantId:
         _eq: x-hasura-tenant-id
     check:
-      tenantId:
-        _eq: x-hasura-tenant-id
+      _and:
+      - tenantId:
+          _eq: x-hasura-tenant-id
+      - _or:
+        - groupAuthorizationId:
+            _is_null: true
+        - GroupAuthorization:
+            tenantId:
+              _eq: x-hasura-tenant-id
+      - _or:
+        - tariffId:
+            _is_null: true
+        - Tariff:
+            tenantId:
+              _eq: x-hasura-tenant-id
+      - _or:
+        - tenantPartnerId:
+            _is_null: true
+        - TenantPartner:
+            tenantId:
+              _eq: x-hasura-tenant-id
 delete_permissions:
 - role: user
   permission:

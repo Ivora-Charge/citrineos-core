@@ -8,15 +8,14 @@ restricted to the caller's own row). This script derives the rollout's roles
 from that single source of truth instead of hand-writing 50+ permission
 blocks:
 
-  tenant-admin      full CRUD, cloned verbatim from ``user`` (tenant-filtered)
-  tenant-viewer     the ``user`` select permissions only (read-only tenant view)
-  platform-support  select-only clone with the tenant filter dropped (all
-                    tenants), for Ivora support staff; no writes
+  tenant-admin      CRUD derived from ``user``, with tenant-owned parent checks
+  tenant-viewer     tenant-scoped reads, excluding raw OCPP logs and credentials
+  platform-support  existing permissions preserved; regular access does not revoke support
   (platform-admin uses Hasura's built-in ``admin`` role via the JWT's
    allowed-roles -- no metadata entry needed or possible)
 
 The graphql-engine container runs the ``cli-migrations-v3`` image with
-``apps/Server/hasura-metadata`` mounted, and RE-APPLIES that directory on
+``apps/ocpp-server/hasura-metadata`` mounted, and RE-APPLIES that directory on
 every start -- so the YAML directory, not the live instance, is the durable
 source of truth. This script rewrites the per-table YAMLs in place (git
 tracks the result) and can also push the change to the running instance with
@@ -41,7 +40,7 @@ from pathlib import Path
 
 import yaml
 
-DERIVED_ROLES = ("tenant-admin", "tenant-viewer", "platform-support")
+DERIVED_ROLES = ("tenant-admin", "tenant-viewer")
 PERM_KINDS = (
     "select_permissions",
     "insert_permissions",
@@ -49,31 +48,121 @@ PERM_KINDS = (
     "delete_permissions",
 )
 DEFAULT_METADATA_DIR = (
-    Path(__file__).resolve().parent.parent / "apps" / "Server" / "hasura-metadata"
+    Path(__file__).resolve().parent.parent / "apps" / "ocpp-server" / "hasura-metadata"
 )
 
+# These fields describe the shared listener, including mappings to other tenants
+# and private-key storage locations. Tenant operators only need connection data.
+NETWORK_PROFILE_TENANT_COLUMNS = [
+    "id", "host", "port", "pingInterval", "protocols", "messageTimeout",
+    "securityProfile", "allowUnknownChargingStations", "dynamicTenantResolution",
+    "tenantId", "createdAt", "updatedAt",
+]
 
-def drop_tenant_filter(node):
-    """Remove {"tenantId": {"_eq": "x-hasura-tenant-id"}} (and the Tenants
-    variant keyed on id) from a boolean expression, recursively. Returns {}
-    (allow all rows) when the filter was the whole expression."""
-    if not isinstance(node, dict):
-        return node
-    out = {}
-    for k, v in node.items():
-        if k in ("tenantId", "id") and v == {"_eq": "x-hasura-tenant-id"}:
+# These values are proof of completed payment onboarding, not editable business
+# details. Only the authenticated server-side onboarding flow may set them.
+TENANT_SERVER_MANAGED_COLUMNS = {"stripeAccountId", "paymentOnboardingCompletedAt"}
+
+# These tables hold unredacted protocol payloads / copies of variable values.
+# Restricting the VariableAttributes root alone does not restrict these roots.
+VIEWER_PRIVATE_TABLES = {"OCPPMessages", "VariableStatuses", "EventData"}
+
+
+def credential_name_filter(column: str) -> dict:
+    """Known protocol credential names, also covering vendor password/secret keys."""
+    return {"_or": [
+        {column: {"_ilike": "%password%"}},
+        {column: {"_ilike": "%passwd%"}},
+        {column: {"_ilike": "%secret%"}},
+        {column: {"_ilike": "%authorization%key%"}},
+        {column: {"_ilike": "%private%key%"}},
+        {column: {"_ilike": "%api%key%"}},
+        {column: {"_ilike": "%token%"}},
+        {column: {"_ilike": "%credential%"}},
+    ]}
+
+
+def viewer_select(select: dict, table_name: str) -> dict | None:
+    # Raw request/response payloads can contain SetVariables passwords or
+    # ChangeConfiguration authorization keys. No payload-redacted view exists.
+    if table_name in VIEWER_PRIVATE_TABLES:
+        return None
+    permission = copy.deepcopy(select)
+    if table_name == "VariableAttributes":
+        permission["filter"] = {"_and": [
+            permission.get("filter", {}),
+            {"_or": [{"dataType": {"_is_null": True}}, {"dataType": {"_neq": "passwordString"}}]},
+            {"_not": {"Variable": credential_name_filter("name")}},
+            {"_not": {"Variable": {"VariableCharacteristic": {
+                "dataType": {"_eq": "passwordString"},
+            }}}},
+        ]}
+    elif table_name == "ChangeConfigurations":
+        permission["filter"] = {"_and": [
+            permission.get("filter", {}), {"_not": credential_name_filter("key")},
+        ]}
+    return permission
+
+
+def relationship_checks(table: dict) -> list[dict]:
+    """A tenant-owned child may only reference parents in the same tenant.
+
+    Foreign-key existence alone does not enforce tenancy, and Hasura's select
+    filter on the parent does not constrain insert/update foreign-key values.
+    Only local single-column FK relationships are used here; reverse relations
+    describe a different row and cannot constrain this row's ownership.
+    """
+    checks = []
+    for relationship in table.get("object_relationships", []):
+        column = relationship.get("using", {}).get("foreign_key_constraint_on")
+        if not isinstance(column, str) or column == "tenantId":
             continue
-        if k in ("_and", "_or") and isinstance(v, list):
-            kept = [drop_tenant_filter(x) for x in v]
-            kept = [x for x in kept if x not in ({}, None)]
-            if kept:
-                out[k] = kept
-            continue
-        out[k] = drop_tenant_filter(v)
-    return out
+        checks.append({"_or": [
+            {column: {"_is_null": True}},
+            {relationship["name"]: {"tenantId": {"_eq": "x-hasura-tenant-id"}}},
+        ]})
+    return checks
+
+
+def enforce_relationship_checks(table: dict, changes: list, table_name: str) -> None:
+    constraints = relationship_checks(table)
+    if not constraints:
+        return
+    for kind in ("insert_permissions", "update_permissions"):
+        for entry in table.get(kind, []):
+            if entry["role"] not in ("user", "tenant-admin"):
+                continue
+            current = entry["permission"].get("check", {})
+            terms = (copy.deepcopy(current["_and"])
+                     if set(current) == {"_and"} else [copy.deepcopy(current)])
+            missing = [constraint for constraint in constraints if constraint not in terms]
+            if missing:
+                entry["permission"]["check"] = {"_and": terms + missing}
+                changes.append(f"{table_name}: {entry['role']} {kind} parent ownership")
 
 
 def derive(table: dict, changes: list, table_name: str) -> None:
+    if table_name == "ServerNetworkProfiles":
+        for entry in table.get("select_permissions", []):
+            if entry["role"] in ("user", "tenant-admin", "tenant-viewer"):
+                if entry["permission"].get("columns") != NETWORK_PROFILE_TENANT_COLUMNS:
+                    entry["permission"]["columns"] = NETWORK_PROFILE_TENANT_COLUMNS.copy()
+                    changes.append(f"{table_name}: limit {entry['role']} connection columns")
+
+    if table_name == "Tenants":
+        for entry in table.get("update_permissions", []):
+            if entry["role"] in ("user", "tenant-admin"):
+                columns = entry["permission"].get("columns", [])
+                if columns == "*":
+                    raise ValueError("Tenants update requires an explicit safe column list")
+                allowed = [column for column in columns
+                           if column not in TENANT_SERVER_MANAGED_COLUMNS]
+                if allowed != columns:
+                    entry["permission"]["columns"] = allowed
+                    changes.append(f"{table_name}: protect {entry['role']} payment onboarding")
+
+    enforce_relationship_checks(table, changes, table_name)
+
     user_perms = {
         kind: next((p for p in table.get(kind, []) if p["role"] == "user"), None)
         for kind in PERM_KINDS
@@ -97,10 +186,9 @@ def derive(table: dict, changes: list, table_name: str) -> None:
 
     if user_perms["select_permissions"]:
         select = user_perms["select_permissions"]["permission"]
-        add("select_permissions", "tenant-viewer", copy.deepcopy(select))
-        support = copy.deepcopy(select)
-        support["filter"] = drop_tenant_filter(support.get("filter", {}))
-        add("select_permissions", "platform-support", support)
+        viewer = viewer_select(select, table_name)
+        if viewer is not None:
+            add("select_permissions", "tenant-viewer", viewer)
 
 
 def reload_live(url: str, secret: str) -> None:

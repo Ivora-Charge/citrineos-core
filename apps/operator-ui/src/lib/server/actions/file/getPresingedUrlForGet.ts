@@ -11,14 +11,13 @@ import { authedAction, type ActionResult } from '@lib/utils/action-guard';
  * @returns The URL of the file
  */
 import { generatePresignedGetUrlIfExists } from '@lib/server/clients/file/fileAccess';
+import { assertImageAccess } from './imageAccess';
 
 export const getPresignedUrlForGet = async (
   fileKey: string,
 ): Promise<ActionResult<string | null>> => {
-  return authedAction<string | null>(async (_session) => {
-    if (!fileKey) {
-      throw new Error('Missing file key');
-    }
+  return authedAction<string | null>(async (session) => {
+    await assertImageAccess(session, fileKey);
 
     try {
       return await generatePresignedGetUrlIfExists(fileKey);

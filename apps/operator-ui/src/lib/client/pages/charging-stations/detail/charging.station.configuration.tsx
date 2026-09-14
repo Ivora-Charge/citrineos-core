@@ -24,10 +24,10 @@ import {
   VARIABLE_ATTRIBUTE_DOWNLOAD_QUERY,
   VARIABLE_ATTRIBUTE_LIST_QUERY,
 } from '@lib/queries/variable.attributes';
-import { ResourceType } from '@lib/utils/access.types';
+import { ActionType, ResourceType } from '@lib/utils/access.types';
 import { downloadCSV } from '@lib/utils/download';
 import { getPlainToInstanceOptions } from '@lib/utils/tables';
-import { type CrudFilter, useList, useOne, useTranslate } from '@refinedev/core';
+import { type CrudFilter, useCan, useList, useOne, useTranslate } from '@refinedev/core';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Edit, Plus } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -103,6 +103,11 @@ export const ChargingStationConfiguration: React.FC<ChargingStationConfiguration
   id,
 }) => {
   const translate = useTranslate();
+  const { data: commandAccess } = useCan({
+    resource: ResourceType.CHARGING_STATIONS,
+    action: ActionType.COMMAND,
+  });
+  const canManage = commandAccess?.can === true;
   const [version, setVersion] = useState<'1.6' | '2.0.1'>('1.6');
   const [searchTerm, setSearchTerm] = useState('');
   const [dataSource, setDataSource] = useState<any[]>([]);
@@ -434,7 +439,7 @@ export const ChargingStationConfiguration: React.FC<ChargingStationConfiguration
                     {translate(col.headerKey)}
                   </th>
                 ))}
-                {version === '1.6' && (
+                {version === '1.6' && canManage && (
                   <th className="px-4 py-2 text-left text-sm font-medium">
                     {translate('ChargingStations.configuration.action')}
                   </th>
@@ -445,7 +450,7 @@ export const ChargingStationConfiguration: React.FC<ChargingStationConfiguration
               {isLoading ? (
                 <tr>
                   <td
-                    colSpan={columns.length + (version === '1.6' ? 1 : 0)}
+                    colSpan={columns.length + (version === '1.6' && canManage ? 1 : 0)}
                     className="px-4 py-8 text-center text-muted-foreground"
                   >
                     {translate('Common.loadingEllipsis')}
@@ -454,7 +459,7 @@ export const ChargingStationConfiguration: React.FC<ChargingStationConfiguration
               ) : filteredDataSource.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={columns.length + (version === '1.6' ? 1 : 0)}
+                    colSpan={columns.length + (version === '1.6' && canManage ? 1 : 0)}
                     className="px-4 py-8 text-center text-muted-foreground"
                   >
                     {translate('ChargingStations.configuration.noData')}
@@ -468,7 +473,7 @@ export const ChargingStationConfiguration: React.FC<ChargingStationConfiguration
                         {row[col.accessor]}
                       </td>
                     ))}
-                    {version === '1.6' && (
+                    {version === '1.6' && canManage && (
                       <td className="px-4 py-2">
                         <Button
                           variant="outline"
@@ -527,7 +532,7 @@ export const ChargingStationConfiguration: React.FC<ChargingStationConfiguration
         </div>
       </div>
 
-      {version === '1.6' && (
+      {version === '1.6' && canManage && (
         <div className="flex justify-end">
           <Button onClick={handleAddConfig} disabled={!isConnected}>
             <Plus className="mr-2 h-4 w-4" />
@@ -540,7 +545,7 @@ export const ChargingStationConfiguration: React.FC<ChargingStationConfiguration
 
       {renderPagination()}
 
-      <Dialog open={isChangeConfigModalOpen} onOpenChange={setIsChangeConfigModalOpen}>
+      <Dialog open={canManage && isChangeConfigModalOpen} onOpenChange={setIsChangeConfigModalOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
